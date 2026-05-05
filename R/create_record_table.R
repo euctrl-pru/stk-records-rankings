@@ -1,87 +1,14 @@
-library(eurocontrol)
-library(readxl)
-library(dplyr)
-library(dbplyr)
-library(lubridate)
-library(here)
-library(stringr)
-library(DBI)
-library(sendmailR)
-library(glue)
-library(eurocontrol)
-library(readr)
-library(purrr)
+# LIBRARIES ----
+source("R/libraries.R")
 
 # FUNCTIONS ----
-export_query <- function(query, schema = "PRU_READ") {
-  withr::local_envvar(c(
-    "TZ" = "UTC",
-    "ORA_SDTZ" = "UTC",
-    "NLS_LANG" = ".AL32UTF8"
-  ))
-
-  con <- withr::local_db_connection(
-    eurocontrol::db_connection(schema = schema)
-  )
-
-  dplyr::tbl(con, dplyr::sql(query)) |>
-    collect()
-}
-
-write_table_oracle <- function(
-  data,
-  table_name,
-  schema = "PRU_READ",
-  append = TRUE
-) {
-  withr::local_envvar(c(
-    TZ = "UTC",
-    ORA_SDTZ = "UTC",
-    NLS_LANG = ".AL32UTF8"
-  ))
-
-  con <- eurocontrol::db_connection(schema = schema)
-  on.exit(DBI::dbDisconnect(con), add = TRUE)
-
-  DBI::dbWriteTable(
-    con,
-    name = table_name,
-    value = data,
-    append = append,
-    row.names = FALSE
-  )
-}
+source("R/helpers.R")
 
 # DIMENSIONS ----
-## Airport ----
-dim_ap <- export_query(
-  "
-                            select
-                            BK_AP_ID,
-                            CFMU_AP_CODE,
-                            VALID_FROM,
-                            VALID_TO
-                            from pruread.v_aiu_dim_airport
-                            "
-)
+source("R/dimensions.R")
 
-list_ap <- export_query(
-  'SELECT BK_AP_ID, EC_AP_NAME FROM pruread.v_aiu_app_list_airport'
-)
-
-list_id_ap <- list_ap |> pull(BK_AP_ID)
-# list_airport_ids <- 5410
-
-## ANSP ----
-dim_sp <- "
-SELECT
-ANSP_ID, ANSP_NAME
-FROM PRUDEV.V_PRU_REL_CFMU_AUA_ANSP
---WHERE ANSP_ID  in (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,26,27,28,29,30,31,32,33,39,42,44,45,46,50,53,56,57)
-group by  ANSP_ID, ANSP_NAME
-"
-
-list_sp <- dim_sp
+# PARAMS ----
+source("R/params.R")
 
 # QUERIES ----
 ## NOTE: Whatever the stakeholder, the output of the query should be,  in this order, stakeholder Id, date, flights. The name of the fields doesn't matter, but the order is important.
@@ -173,26 +100,6 @@ WHERE unit_kind = 'ANSP'
 ORDER BY ansp_id, FLIGHT_DATE
 "
 
-# COLUMN NAMES ----
-## Airport ----
-colnames_ap <- c(
-  "BK_AP_ID",
-  "INIT_DATE_PERIOD",
-  "AVG_DEP_ARR",
-  "RANK",
-  "PERIOD",
-  "LAST_UPDATED"
-)
-
-## ANSP ----
-colnames_sp <- c(
-  "ANSP_ID",
-  "INIT_DATE_PERIOD",
-  "AVG_FLT",
-  "RANK",
-  "PERIOD",
-  "LAST_UPDATED"
-)
 
 # GET BASIC DATA ----
 ### set stakeholder

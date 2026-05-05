@@ -1,65 +1,18 @@
-library(eurocontrol)
-library(readxl)
-library(dplyr)
-library(dbplyr)
-library(lubridate)
-library(here)
-library(stringr)
-library(DBI)
-library(sendmailR)
-library(glue)
-library(eurocontrol)
-library(readr)
-library(sendmailR)
-library(knitr)
+# LIBRARIES ----
+source("R/libraries.R")
 
 # FUNCTIONS ----
-## link to helpers
+source("R/helpers.R")
 
 # DIMENSIONS ----
-## Airport ----
-dim_ap <- export_query(
-  "
-                            select
-                            BK_AP_ID as STK_ID,
-                            CFMU_AP_CODE as STK_CODE,
-                            EC_AP_NAME as STK_NAME,
-                            VALID_FROM,
-                            VALID_TO
-                            from pruread.v_aiu_dim_airport
-                            "
-)
+source("R/dimensions.R")
 
-list_ap <- export_query(
-  'SELECT BK_AP_ID FROM pruread.v_aiu_app_list_airport'
-)
-
-list_id_ap <- list_ap |> pull(BK_AP_ID)
-# list_id_ap <- 5410
-
-## ANSP ----
-dim_sp <- export_query(
-  "
-SELECT
-       ANSP_ID as STK_ID,
-       ANSP_ID as STK_CODE,
-       ANSP_NAME STK_NAME
-FROM PRUDEV.V_PRU_REL_CFMU_AUA_ANSP
---WHERE ANSP_ID  in (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,26,27,28,29,30,31,32,33,39,42,44,45,46,50,53,56,57)
- group by  ANSP_ID, ANSP_NAME
-"
-) %>%
-  mutate(
-    VALID_FROM = ymd("19000101"),
-    VALID_TO = ymd("29991231"),
-  )
-
-list_sp <- dim_sp
-
+# PARAMS ----
+source("R/params.R")
 
 # QUERIES ----
 ## Airport ----
-ap_traffic_query <- "
+ap_traffic_update_query <- "
   WITH
   all_data AS (
       SELECT
@@ -108,7 +61,7 @@ ap_traffic_query <- "
   "
 
 ## ANSP ----
-sp_traffic_query <- "
+sp_traffic_update_query <- "
 WITH
 -- flights
 OP_AUA_DATA as
@@ -169,33 +122,12 @@ WHERE flt_date >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
 
 "
 
-# COLUMN NAMES ----
-## Airport ----
-colnames_ap <- c(
-  "BK_AP_ID",
-  "INIT_DATE_PERIOD",
-  "AVG_DEP_ARR",
-  "RANK",
-  "PERIOD",
-  "LAST_UPDATED"
-)
-
-## ANSP ----
-colnames_sp <- c(
-  "ANSP_ID",
-  "INIT_DATE_PERIOD",
-  "AVG_FLT",
-  "RANK",
-  "PERIOD",
-  "LAST_UPDATED"
-)
-
 
 # CALCS ----
-# set params ----
-stk <- "sp"
+## set params & toggles ----
+stk <- "ap"
 backup_folder <- 'G:/HQ/dgof-pru/Data/DataProcessing/Covid19/Archive'
-toggle_write_db <- TRUE
+toggle_write_db <- FALSE
 agg_period <- "day"
 # agg_period <- "month"
 # current date not included in the dataset. Max day + 1
@@ -233,7 +165,7 @@ run_for_agg_period <- function(agg_period) {
   ### build query ----
   con <- eurocontrol::db_connection(schema = "PRU_READ")
 
-  sql_template <- get(paste0(stk, "_traffic_query"))
+  sql_template <- get(paste0(stk, "_traffic_update_query"))
 
   base_query <- as.character(
     glue::glue_sql(
