@@ -123,10 +123,137 @@ WHERE flt_date >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
 "
 
 
+## AO ----
+ao_traffic_update_query <- "
+WITH
+list_ao AS (
+	SELECT 	ao_id,
+	    ao_code,
+			ao_name,
+			wef,
+			til
+--	  	, ao_grp_code,
+--			ao_grp_name
+	FROM pruread.v_aiu_app_list_ao_grp
+	ORDER BY ao_id
+
+),
+FLIGHTS AS (
+  SELECT
+    a.flt_uid,
+    TRUNC(a.flt_a_asp_prof_time_entry) AS entry_date,
+    a.ao_icao_id
+  FROM prudev.v_aiu_flt a
+  WHERE a.ao_icao_id IN ({list_icao_ao*})
+    AND a.flt_lobt >= TO_DATE({from_date_str}, 'YYYY-MM-DD') - 2
+    AND a.flt_lobt <  TO_DATE({to_date_str}, 'YYYY-MM-DD') + 2
+    AND a.flt_a_asp_prof_time_entry >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+    AND a.flt_a_asp_prof_time_entry <  TO_DATE({to_date_str}, 'YYYY-MM-DD')
+    AND a.flt_state IN ('TE','TA','AA')
+),
+
+AO_MAP AS (
+  SELECT
+    f.flt_uid,
+    d.ao_id,
+    ROW_NUMBER() OVER (
+      PARTITION BY f.flt_uid
+      ORDER BY d.wef DESC NULLS LAST, d.til DESC NULLS LAST
+    ) AS rn
+  FROM FLIGHTS f
+  LEFT JOIN list_AO d
+    ON d.ao_code = f.ao_icao_id
+   AND f.entry_date BETWEEN d.wef AND d.til
+),
+
+DATA_FLIGHT AS (
+  SELECT
+    NVL(m.ao_id,   99999) AS ao_id,
+    f.entry_date,
+    f.flt_uid
+  FROM FLIGHTS f
+  LEFT JOIN AO_MAP m
+    ON m.flt_uid = f.flt_uid
+   AND m.rn = 1
+)
+
+  SELECT
+    ao_id,
+    entry_date AS flight_date,
+    COUNT(flt_uid)        AS day_tfc
+  FROM DATA_FLIGHT
+  WHERE ao_id IN ({list_id_ao*})
+  GROUP BY ao_id,  entry_date
+"
+
+## AO GRP ----
+ao_grp_traffic_update_query <- "
+WITH
+list_ao AS (
+	SELECT 	ao_id,
+	    ao_code,
+			ao_name,
+			wef,
+			til,
+			ao_grp_name
+	FROM pruread.v_aiu_app_list_ao_grp
+	ORDER BY ao_id
+
+),
+FLIGHTS AS (
+  SELECT
+    a.flt_uid,
+    TRUNC(a.flt_a_asp_prof_time_entry) AS entry_date,
+    a.ao_icao_id
+  FROM prudev.v_aiu_flt a
+  WHERE a.ao_icao_id IN ({list_icao_ao*})
+    AND a.flt_lobt >= TO_DATE({from_date_str}, 'YYYY-MM-DD') - 2
+    AND a.flt_lobt <  TO_DATE({to_date_str}, 'YYYY-MM-DD') + 2
+    AND a.flt_a_asp_prof_time_entry >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+    AND a.flt_a_asp_prof_time_entry <  TO_DATE({to_date_str}, 'YYYY-MM-DD')
+    AND a.flt_state IN ('TE','TA','AA')
+),
+
+AO_MAP AS (
+  SELECT
+    f.flt_uid,
+    d.ao_id,
+    d.ao_grp_name,
+    ROW_NUMBER() OVER (
+      PARTITION BY f.flt_uid
+      ORDER BY d.wef DESC NULLS LAST, d.til DESC NULLS LAST
+    ) AS rn
+  FROM FLIGHTS f
+  LEFT JOIN list_AO d
+    ON d.ao_code = f.ao_icao_id
+   AND f.entry_date BETWEEN d.wef AND d.til
+),
+
+DATA_FLIGHT AS (
+  SELECT
+    NVL(m.ao_id,   99999) AS ao_id,
+    nvl(m.ao_grp_name, 'Undefined') AS ao_grp_name,
+    f.entry_date,
+    f.flt_uid
+  FROM FLIGHTS f
+  LEFT JOIN AO_MAP m
+    ON m.flt_uid = f.flt_uid
+   AND m.rn = 1
+)
+
+  SELECT
+    ao_grp_name,
+    entry_date AS flight_date,
+    COUNT(flt_uid)        AS day_tfc
+  FROM DATA_FLIGHT
+  WHERE ao_id <> 99999
+  GROUP BY ao_grp_name,  entry_date
+"
+
 # CALCS ----
 ## set params & toggles ----
 backup_folder <- 'G:/HQ/dgof-pru/Data/DataProcessing/Covid19/Archive'
-toggle_write_db <- TRUE
+toggle_write_db <- FALSE
 agg_period <- "day"
 # agg_period <- "month"
 # current date not included in the dataset. Max day + 1
@@ -143,14 +270,16 @@ if (day(current_date) == 1) {
   agg_period <- append(agg_period, "year")
 }
 
-stk <- c("ap", "sp")
+stk <- c("ap", "sp", "ao", "ao_grp")
+# stk <- c("ao_grp")
 
 run_for_stk <- function(stk) {
   message(paste("running", stk))
 
   run_for_agg_period <- function(agg_period) {
+    # agg_period <- "day"
     if (agg_period == "day") {
-      # from_date <- ymd("20260101")
+      # from_date <- ymd("20260514")
       from_date <- current_date - days(1)
     } else if (agg_period == "week") {
       from_date <- current_date - days(7)
