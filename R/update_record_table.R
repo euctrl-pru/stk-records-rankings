@@ -253,7 +253,7 @@ DATA_FLIGHT AS (
 # CALCS ----
 ## set params & toggles ----
 backup_folder <- 'G:/HQ/dgof-pru/Data/DataProcessing/Covid19/Archive'
-toggle_write_db <- FALSE
+toggle_write_db <- TRUE
 agg_period <- "day"
 # agg_period <- "month"
 # current date not included in the dataset. Max day + 1
