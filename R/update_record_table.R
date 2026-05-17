@@ -250,6 +250,188 @@ DATA_FLIGHT AS (
   GROUP BY ao_grp_name,  entry_date
 "
 
+## ST DAI ----
+st_dai_traffic_update_query <- "
+WITH
+
+COUNTRY_ICAO2LETTER  as (
+ select distinct
+       ec_icao_country_code  ICAO2LETTER,
+       CASE
+             WHEN ec_icao_country_code = 'GE' then 'LE'
+             WHEN ec_icao_country_code = 'ET' then 'ED'
+             ELSE ec_icao_country_code
+        END  COUNTRY_code
+  from SWH_FCT.dim_icao_country a
+  WHERE Valid_to > trunc(sysdate) - 1
+  AND ec_icao_country_code in ({list_st_icao_code_dai*})
+  ORDER BY COUNTRY_code
+ ) ,
+
+LIST_COUNTRY as (
+select  COUNTRY_code
+FROM COUNTRY_ICAO2LETTER
+group by  COUNTRY_code),
+
+ CTRY_DAY AS (
+SELECT a.COUNTRY_code,
+        t.day_date
+FROM LIST_COUNTRY a, prudev.pru_time_references t
+WHERE
+   t.day_date >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+  	AND t.DAY_date < TO_DATE({to_date_str}, 'YYYY-MM-DD')
+       ),
+
+
+DATA_DEP AS (
+(SELECT
+        B.COUNTRY_code ,
+        TRUNC(A.flt_a_asp_prof_time_entry) flight_DATE,
+        COUNT(a.flt_uid) DAY_TFC
+FROM prudev.v_aiu_flt a,
+     COUNTRY_ICAO2LETTER b
+WHERE  SUBSTR(A.flt_dep_ad,1,2) =  b.ICAO2LETTER
+    AND A.flt_lobt >= TO_DATE({from_date_str}, 'YYYY-MM-DD') -2
+    AND A.flt_lobt <  TO_DATE({to_date_str}, 'YYYY-MM-DD') + 2
+    AND A.flt_a_asp_prof_time_entry >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+    AND A.flt_a_asp_prof_time_entry <  TO_DATE({to_date_str}, 'YYYY-MM-DD')
+    AND A.flt_state IN ('TE','TA','AA')
+GROUP BY  B.COUNTRY_code  ,
+        TRUNC(A.flt_a_asp_prof_time_entry)
+)
+),
+
+DATA_ARR AS (
+SELECT
+        C.COUNTRY_code ,
+        TRUNC(A.flt_a_asp_prof_time_entry) flight_DATE,
+        COUNT(a.flt_uid) DAY_TFC
+FROM prudev.v_aiu_flt a,
+     COUNTRY_ICAO2LETTER c
+WHERE
+     SUBSTR(A.flt_ctfm_ades,1,2) = C.ICAO2LETTER
+    AND A.flt_lobt >= TO_DATE({from_date_str}, 'YYYY-MM-DD') -2
+    AND A.flt_lobt <  TO_DATE({to_date_str}, 'YYYY-MM-DD') + 2
+    AND A.flt_a_asp_prof_time_entry >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+    AND A.flt_a_asp_prof_time_entry <  TO_DATE({to_date_str}, 'YYYY-MM-DD')
+    AND A.flt_state IN ('TE','TA','AA')
+GROUP BY  C.COUNTRY_code  ,
+        TRUNC(A.flt_a_asp_prof_time_entry)
+),
+
+DATA_DOMESTIC as
+(SELECT
+        B.COUNTRY_code ,
+        TRUNC(A.flt_a_asp_prof_time_entry) FLIGHT_DATE,
+        COUNT(a.flt_uid) DAY_TFC
+FROM prudev.v_aiu_flt a,
+     COUNTRY_ICAO2LETTER b,
+     COUNTRY_ICAO2LETTER c
+WHERE  SUBSTR(A.flt_dep_ad,1,2) =  b.ICAO2LETTER   AND
+       SUBSTR(A.flt_ctfm_ades,1,2) = C.ICAO2LETTER
+    AND  B.COUNTRY_code =C.COUNTRY_code
+    AND A.flt_lobt >= TO_DATE({from_date_str}, 'YYYY-MM-DD') -2
+    AND A.flt_lobt <  TO_DATE({to_date_str}, 'YYYY-MM-DD') + 2
+    AND A.flt_a_asp_prof_time_entry >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+    AND A.flt_a_asp_prof_time_entry <  TO_DATE({to_date_str}, 'YYYY-MM-DD')
+    AND A.flt_state IN ('TE','TA','AA')
+GROUP BY  B.COUNTRY_code  ,
+        TRUNC(A.flt_a_asp_prof_time_entry)
+),
+
+DATA_SPAIN_SEPARATED AS (
+SELECT
+          a.COUNTRY_code,
+          a.day_date as flight_date,
+--          coalesce(b.DAY_TFC,0) as DEP,
+--          coalesce( c.DAY_TFC,0) as ARR ,
+--          coalesce( d.DAY_TFC,0) as DOM ,
+         coalesce(b.DAY_TFC,0)  + coalesce( c.DAY_TFC,0) - coalesce( d.DAY_TFC,0) as DAY_TFC
+FROM CTRY_DAY A
+LEFT JOIN DATA_DEP b on a.COUNTRY_code = B.COUNTRY_code and a.day_date = b.FLIGHT_date
+LEFT JOIN DATA_ARR c on a.COUNTRY_code = c.COUNTRY_code and a.day_date = c.FLIGHT_date
+LEFT JOIN DATA_DOMESTIC d on a.COUNTRY_code = d.COUNTRY_code and a.day_date = d.FLIGHT_date
+),
+
+
+ CTRY_DAY_SPAIN AS (
+SELECT 'LEGC' AS COUNTRY_code,
+        t.day_date
+FROM prudev.pru_time_references t
+WHERE
+   t.day_date >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+  	AND t.DAY_date < TO_DATE({to_date_str}, 'YYYY-MM-DD')
+       ),
+
+
+DATA_DEP_SPAIN AS (
+(SELECT
+		'LEGC' AS country_code,
+        TRUNC(A.flt_a_asp_prof_time_entry) flight_DATE,
+        COUNT(a.flt_uid) DAY_TFC
+FROM prudev.v_aiu_flt a
+WHERE  SUBSTR(A.flt_dep_ad,1,2) IN ('GE', 'GC', 'LE')
+    AND A.flt_lobt >= TO_DATE({from_date_str}, 'YYYY-MM-DD') -2
+    AND A.flt_lobt <  TO_DATE({to_date_str}, 'YYYY-MM-DD') + 2
+    AND A.flt_a_asp_prof_time_entry >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+    AND A.flt_a_asp_prof_time_entry <  TO_DATE({to_date_str}, 'YYYY-MM-DD')
+    AND A.flt_state IN ('TE','TA','AA')
+GROUP BY  TRUNC(A.flt_a_asp_prof_time_entry)
+)
+),
+
+DATA_ARR_SPAIN AS (
+SELECT
+		'LEGC' AS country_code,
+        TRUNC(A.flt_a_asp_prof_time_entry) flight_DATE,
+        COUNT(a.flt_uid) DAY_TFC
+FROM prudev.v_aiu_flt a
+WHERE  SUBSTR(A.flt_ctfm_ades,1,2) IN ('GE', 'GC', 'LE')
+    AND A.flt_lobt >= TO_DATE({from_date_str}, 'YYYY-MM-DD') -2
+    AND A.flt_lobt <  TO_DATE({to_date_str}, 'YYYY-MM-DD') + 2
+    AND A.flt_a_asp_prof_time_entry >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+    AND A.flt_a_asp_prof_time_entry <  TO_DATE({to_date_str}, 'YYYY-MM-DD')
+    AND A.flt_state IN ('TE','TA','AA')
+GROUP BY  TRUNC(A.flt_a_asp_prof_time_entry)
+),
+
+
+DATA_DOMESTIC_SPAIN as
+(SELECT
+        'LEGC' AS country_code,
+        TRUNC(A.flt_a_asp_prof_time_entry) FLIGHT_DATE,
+        COUNT(a.flt_uid) DAY_TFC
+FROM prudev.v_aiu_flt a
+WHERE  SUBSTR(A.flt_dep_ad,1,2) IN ('GE', 'GC', 'LE')  AND
+       SUBSTR(A.flt_ctfm_ades,1,2) IN ('GE', 'GC', 'LE')
+    AND A.flt_lobt >= TO_DATE({from_date_str}, 'YYYY-MM-DD') -2
+    AND A.flt_lobt <  TO_DATE({to_date_str}, 'YYYY-MM-DD') + 2
+    AND A.flt_a_asp_prof_time_entry >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+    AND A.flt_a_asp_prof_time_entry <  TO_DATE({to_date_str}, 'YYYY-MM-DD')
+    AND A.flt_state IN ('TE','TA','AA')
+GROUP BY  TRUNC(A.flt_a_asp_prof_time_entry)
+),
+
+DATA_SPAIN_TOGETHER AS (
+SELECT
+          a.COUNTRY_code,
+          a.day_date as flight_date,
+--          coalesce(b.DAY_TFC,0) as DEP,
+--          coalesce( c.DAY_TFC,0) as ARR ,
+--          coalesce( d.DAY_TFC,0) as DOM ,
+         coalesce(b.DAY_TFC,0)  + coalesce( c.DAY_TFC,0) - coalesce( d.DAY_TFC,0) as DAY_TFC
+FROM CTRY_DAY_SPAIN A
+LEFT JOIN DATA_DEP_SPAIN b on a.day_date = b.FLIGHT_date
+LEFT JOIN DATA_ARR_SPAIN c on a.day_date = c.FLIGHT_date
+LEFT JOIN DATA_DOMESTIC_SPAIN d on a.day_date = d.FLIGHT_date
+)
+
+SELECT * FROM DATA_SPAIN_SEPARATED
+UNION ALL
+SELECT * FROM DATA_SPAIN_TOGETHER
+
+"
+
 # CALCS ----
 ## set params & toggles ----
 backup_folder <- 'G:/HQ/dgof-pru/Data/DataProcessing/Covid19/Archive'
@@ -258,7 +440,7 @@ agg_period <- "day"
 # agg_period <- "month"
 # current date not included in the dataset. Max day + 1
 current_date <- today()
-# current_date <- ymd("20260503")
+# current_date <- ymd("20260515")
 
 if (day(current_date) == 1) {
   agg_period <- append(agg_period, "month")
@@ -270,8 +452,8 @@ if (day(current_date) == 1) {
   agg_period <- append(agg_period, "year")
 }
 
-stk <- c("ap", "sp", "ao", "ao_grp")
-# stk <- c("ao_grp")
+stk <- c("ap", "sp", "ao", "ao_grp", "st_dai")
+# stk <- c("st_dai")
 
 run_for_stk <- function(stk) {
   message(paste("running", stk))

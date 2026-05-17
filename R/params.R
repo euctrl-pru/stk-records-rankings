@@ -48,3 +48,13 @@ colnames_st_aua_daio <- c(
   "PERIOD",
   "LAST_UPDATED"
 )
+
+## COUNTRY DAI ----
+colnames_st_dai <- c(
+  "EC_ICAO_COUNTRY_CODE",
+  "INIT_DATE_PERIOD",
+  "AVG_FLT_DAI",
+  "RANK",
+  "PERIOD",
+  "LAST_UPDATED"
+)

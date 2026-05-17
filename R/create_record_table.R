@@ -13,6 +13,39 @@ source("R/params.R")
 # QUERIES ----
 ## NOTE: Whatever the stakeholder, the output of the query should be,  in this order, stakeholder Id, date, flights. The name of the fields doesn't matter, but the order is important.
 
+## Network ----
+test_nw_1 <- export_query(
+  "
+SELECT p.FLT_DATE, p.ttf, p.tdm_ert, p.tdm_arp
+FROM prudev.pru_fact_traffic_airspace p, prudev.pru_indicator i
+      WHERE p.TYPE = 'INDIC' AND i.code = 'CFMU_ZONE_FLIGHT' AND p.ID = i.ID
+      ORDER BY p.flt_date
+"
+)
+
+test_nw_2 <- export_query(
+  "select
+                a_first_entry_time_date FLIGHT_DATE ,
+                SUM(nvl(a.all_traffic,0)) FLT,
+                SUM(nvl(a.total_delay_in_minutes,0)) TDM
+           FROM  ARU_SYN.AGG_GLOBAL_DAILY_COUNTS  a
+           WHERE
+            a.a_first_entry_time_date  < TRUNC (SYSDATE)
+           GROUP BY  a.a_first_entry_time_date
+ORDER BY a_first_entry_time_date
+"
+)
+
+test_nw_1 <- test_nw_1 %>% mutate(FLT_DATE = as.Date(FLT_DATE))
+test_nw_2 <- test_nw_2 %>% mutate(FLIGHT_DATE = as.Date(FLIGHT_DATE))
+
+test_nw <- test_nw_1 %>%
+  left_join(test_nw_2, by = c("FLT_DATE" = "FLIGHT_DATE")) %>%
+  mutate(CHECK = TTF - FLT, TDM = TDM_ERT + TDM_ARP) %>%
+  # filter(!is.na(CHECK)) %>%
+  arrange(desc(TDM)) %>%
+  slice(1:10)
+
 ## Airport ----
 ap_traffic_query <- "
 WITH all_data AS (
@@ -101,6 +134,175 @@ WHERE unit_kind = 'ANSP'
 ORDER BY STK_ID, FLIGHT_DATE
 "
 
+## COUNTRY DAI ----
+st_dai_traffic_query <- "
+WITH
+
+COUNTRY_ICAO2LETTER  as (
+ select distinct
+       ec_icao_country_code  ICAO2LETTER,
+       CASE
+             WHEN ec_icao_country_code = 'GE' then 'LE'
+             WHEN ec_icao_country_code = 'ET' then 'ED'
+             ELSE ec_icao_country_code
+        END  COUNTRY_code
+  from SWH_FCT.dim_icao_country a
+  WHERE Valid_to > trunc(sysdate) - 1
+  AND ec_icao_country_code in ({list_st_icao_code_dai*})
+  ORDER BY COUNTRY_code
+ ) ,
+
+LIST_COUNTRY as (
+select  COUNTRY_code
+FROM COUNTRY_ICAO2LETTER
+group by  COUNTRY_code),
+
+ CTRY_DAY AS (
+SELECT a.COUNTRY_code,
+        t.day_date
+FROM LIST_COUNTRY a, prudev.pru_time_references t
+WHERE
+   t.day_date >= to_date('1997-01-01', 'yyyy-mm-dd')
+  	AND t.DAY_date < trunc(sysdate)
+       ),
+
+
+DATA_DEP AS (
+(SELECT
+        B.COUNTRY_code ,
+        TRUNC(A.Ifpz_entry_time_act) flight_DATE,
+        COUNT(a.flt_uid) DAY_TFC
+FROM swh_fct.fac_flight a,
+     COUNTRY_ICAO2LETTER b
+WHERE  SUBSTR(A.ADEP,1,2) =  b.ICAO2LETTER
+    AND A.lobt <  trunc(sysdate) + 2
+    AND A.Ifpz_entry_time_act <  trunc(sysdate)
+    AND A.flt_status IN ('TE','TA','AA')
+GROUP BY  B.COUNTRY_code  ,
+        TRUNC(A.Ifpz_entry_time_act)
+)
+),
+
+DATA_ARR AS (
+SELECT
+        C.COUNTRY_code ,
+        TRUNC(A.Ifpz_entry_time_act) flight_DATE,
+        COUNT(a.flt_uid) DAY_TFC
+FROM swh_fct.fac_flight a,
+     COUNTRY_ICAO2LETTER c
+WHERE
+     SUBSTR(a.ADES_FILED,1,2) = C.ICAO2LETTER
+    AND A.lobt <  trunc(sysdate) + 2
+    AND A.Ifpz_entry_time_act <  trunc(sysdate)
+    AND A.flt_status IN ('TE','TA','AA')
+GROUP BY  C.COUNTRY_code  ,
+        TRUNC(A.Ifpz_entry_time_act)
+),
+
+DATA_DOMESTIC as
+(SELECT
+        B.COUNTRY_code ,
+        TRUNC(A.Ifpz_entry_time_act) FLIGHT_DATE,
+        COUNT(a.flt_uid) DAY_TFC
+FROM swh_fct.fac_flight a,
+     COUNTRY_ICAO2LETTER b,
+     COUNTRY_ICAO2LETTER c
+WHERE  SUBSTR(A.adep,1,2) =  b.ICAO2LETTER   AND
+       SUBSTR(A.ADES_FILED ,1,2) = C.ICAO2LETTER
+    AND  B.COUNTRY_code =C.COUNTRY_code
+    AND A.lobt <  trunc(sysdate) + 2
+    AND A.Ifpz_entry_time_act <  trunc(sysdate)
+    AND A.flt_status IN ('TE','TA','AA')
+GROUP BY  B.COUNTRY_code  ,
+        TRUNC(A.Ifpz_entry_time_act)
+),
+
+DATA_SPAIN_SEPARATED AS (
+SELECT
+          a.day_date as flight_date,
+          a.COUNTRY_code,
+          coalesce(b.DAY_TFC,0) as DEP,
+          coalesce( c.DAY_TFC,0) as ARR ,
+          coalesce( d.DAY_TFC,0) as DOM ,
+         coalesce(b.DAY_TFC,0)  + coalesce( c.DAY_TFC,0) - coalesce( d.DAY_TFC,0) as DAY_TFC
+FROM CTRY_DAY A
+LEFT JOIN DATA_DEP b on a.COUNTRY_code = B.COUNTRY_code and a.day_date = b.FLIGHT_date
+LEFT JOIN DATA_ARR c on a.COUNTRY_code = c.COUNTRY_code and a.day_date = c.FLIGHT_date
+LEFT JOIN DATA_DOMESTIC d on a.COUNTRY_code = d.COUNTRY_code and a.day_date = d.FLIGHT_date
+),
+
+
+ CTRY_DAY_SPAIN AS (
+SELECT 'LEGC' AS COUNTRY_code,
+        t.day_date
+FROM prudev.pru_time_references t
+WHERE
+   t.day_date >= to_date('1997-01-01', 'yyyy-mm-dd')
+  	AND t.DAY_date < trunc(sysdate)
+       ),
+
+
+DATA_DEP_SPAIN AS (
+(SELECT
+		'LEGC' AS country_code,
+        TRUNC(A.Ifpz_entry_time_act) flight_DATE,
+        COUNT(a.flt_uid) DAY_TFC
+FROM swh_fct.fac_flight a
+WHERE  SUBSTR(A.adep,1,2) IN ('GE', 'GC', 'LE')
+    AND A.lobt <  trunc(sysdate) + 2
+    AND A.Ifpz_entry_time_act <  trunc(sysdate)
+    AND A.flt_status IN ('TE','TA','AA')
+GROUP BY  TRUNC(A.Ifpz_entry_time_act)
+)
+),
+
+DATA_ARR_SPAIN AS (
+SELECT
+		'LEGC' AS country_code,
+        TRUNC(A.Ifpz_entry_time_act) flight_DATE,
+        COUNT(a.flt_uid) DAY_TFC
+FROM swh_fct.fac_flight a
+WHERE  SUBSTR(A.ADES_FILED ,1,2) IN ('GE', 'GC', 'LE')
+    AND A.lobt <  trunc(sysdate) + 2
+    AND A.Ifpz_entry_time_act <  trunc(sysdate)
+    AND A.flt_status IN ('TE','TA','AA')
+GROUP BY  TRUNC(A.Ifpz_entry_time_act)
+),
+
+
+DATA_DOMESTIC_SPAIN as
+(SELECT
+        'LEGC' AS country_code,
+        TRUNC(A.Ifpz_entry_time_act) FLIGHT_DATE,
+        COUNT(a.flt_uid) DAY_TFC
+FROM swh_fct.fac_flight a
+WHERE  SUBSTR(A.adep,1,2) IN ('GE', 'GC', 'LE')  AND
+       SUBSTR(A.ADES_FILED,1,2) IN ('GE', 'GC', 'LE')
+    AND A.lobt <  trunc(sysdate) + 2
+    AND A.Ifpz_entry_time_act <  trunc(sysdate)
+    AND A.flt_status IN ('TE','TA','AA')
+GROUP BY  TRUNC(A.Ifpz_entry_time_act)
+),
+
+DATA_SPAIN_TOGETHER AS (
+SELECT
+          a.day_date as flight_date,
+          a.COUNTRY_code,
+          coalesce(b.DAY_TFC,0) as DEP,
+          coalesce( c.DAY_TFC,0) as ARR ,
+          coalesce( d.DAY_TFC,0) as DOM ,
+         coalesce(b.DAY_TFC,0)  + coalesce( c.DAY_TFC,0) - coalesce( d.DAY_TFC,0) as DAY_TFC
+FROM CTRY_DAY_SPAIN A
+LEFT JOIN DATA_DEP_SPAIN b on a.day_date = b.FLIGHT_date
+LEFT JOIN DATA_ARR_SPAIN c on a.day_date = c.FLIGHT_date
+LEFT JOIN DATA_DOMESTIC_SPAIN d on a.day_date = d.FLIGHT_date
+)
+
+SELECT * FROM DATA_SPAIN_SEPARATED
+UNION ALL
+SELECT * FROM DATA_SPAIN_TOGETHER
+
+"
 ## COUNTRY AUA DAIO ----
 st_aua_daio_traffic_query <- "
     SELECT
@@ -111,7 +313,7 @@ st_aua_daio_traffic_query <- "
     FROM aru_syn.agg_asp a
     WHERE
         agg_asp_ty = 'COUNTRY_AUA' AND a.agg_asp_unit_ty <> 'REGION'
-        AND agg_asp_id in ({list_st_icao_code*})
+        AND agg_asp_id in ({list_st_icao_code_daio*})
     GROUP BY
         agg_asp_entry_date,
         agg_asp_id,
@@ -208,7 +410,7 @@ FLIGHTS AS (
 
 # GET BASIC DATA ----
 ### set stakeholder
-stk <- "ao_grp"
+stk <- "st_dai"
 
 ### build query ----
 con <- eurocontrol::db_connection(schema = "PRU_READ")
@@ -233,7 +435,7 @@ data_raw <- export_query(base_query)
 
 # data_raw %>%
 #   write_csv(
-#     'G:/HQ/dgof-pru/Project/DDP/Projects/DDP-25-020_Data_snapshot_top_airports_max_flights_days/ao_traffic_pre_2019.csv'
+#     'G:/HQ/dgof-pru/Project/DDP/Projects/DDP-25-020_Data_snapshot_top_airports_max_flights_days/st_dai_traffic.csv'
 #   )
 
 # data_raw <- read_csv('G:/HQ/dgof-pru/Project/DDP/Projects/DDP-25-020_Data_snapshot_top_airports_max_flights_days/apt_traffic_all_days.csv')
@@ -267,6 +469,9 @@ if (stk == 'ao' | stk == 'ao_grp') {
 
     # test_day <- data_stk %>% filter(FLIGHT_DATE == ymd(20260514))
   }
+} else if (stk == 'st_dai') {
+  data_stk <- data_raw %>%
+    select(COUNTRY_CODE, FLIGHT_DATE, DAY_TFC)
 } else {
   data_stk <- data_raw
 }

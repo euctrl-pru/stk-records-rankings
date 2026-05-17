@@ -126,10 +126,24 @@ list_sp <- dim_sp
 ## COUNTRY ICAO ----
 dim_st_icao <- export_query(
   "
-SELECT distinct
-  EC_ICAO_COUNTRY_CODE as stk_code
+SELECT DISTINCT
+ EC_ICAO_COUNTRY_CODE as stk_id,
+ EC_ICAO_COUNTRY_CODE as stk_code,
+ CASE WHEN EC_ICAO_COUNTRY_CODE = 'LU' THEN 'Moldova'
+      WHEN EC_ICAO_COUNTRY_CODE = 'LE' THEN 'Spain Continental'
+      WHEN EC_ICAO_COUNTRY_CODE = 'GC' THEN 'Spain Canaries'
+ 		ELSE EC_ICAO_COUNTRY_NAME
+ END stk_name
 FROM SWH_FCT.dim_icao_country
-ORDER BY 1
+WHERE valid_to >= trunc(sysdate) -1
+
+union all
+
+select
+  'LEGC' as stk_id,
+    'LEGC' as stk_code,
+    'Spain' as stk_name
+from dual
 
 "
 ) %>%
@@ -139,7 +153,8 @@ ORDER BY 1
     VALID_TO = ymd("29991231"),
   )
 
-list_st_icao <- dim_st_icao %>%
+list_st_icao_daio <- dim_st_icao %>%
+  select(STK_CODE) %>%
   filter(
     substr(STK_CODE, 1, 1) %in%
       c('E', 'L') |
@@ -147,4 +162,18 @@ list_st_icao <- dim_st_icao %>%
         c('GC', 'GM', 'GE', 'UD', 'UG', 'UK', 'YY', 'BI')
   )
 
-list_st_icao_code <- list_st_icao |> pull(STK_CODE)
+list_st_icao_code_daio <- list_st_icao_daio |> pull(STK_CODE)
+
+list_st_icao_dai <- dim_st_icao %>%
+  filter(
+    substr(STK_CODE, 1, 1) %in%
+      c('E', 'L') |
+      substr(STK_CODE, 1, 2) %in%
+        c('GC', 'GM', 'GE', 'UD', 'UG', 'UK', 'BI')
+  ) %>%
+  filter(!(STK_CODE %in% c('LV', 'LX', 'EU', 'LN'))) %>%
+  filter(STK_CODE != 'LEGC')
+
+list_st_icao_code_dai <- list_st_icao_dai |> pull(STK_CODE)
+
+dim_st_dai <- dim_st_icao
