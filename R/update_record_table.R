@@ -763,59 +763,71 @@ run_for_day <- function(current_date) {
       ) %>%
       arrange(STK_NAME, AGG_PERIOD, RANK_PERIOD)
 
-    # send email ----
-    ## email parameters ----
-    if (nrow(data_updated_new) > 0) {
-      sbj = paste(stk, "record table updated for ", current_date)
+    return(data_updated_new)
+  }
 
+  results <- set_names(stk) |>
+    map(run_for_stk)
+
+  # send email ----
+  ## email parameters ----
+  msg <- ''
+  msg <- paste0(
+    "<html><body>",
+    "<p>Hello,</p>"
+  )
+  sbj = paste("Record table updates for", current_date)
+
+  for (s in stk) {
+    data_updated_s <- results[[s]]
+
+    if (nrow(data_updated_s) > 0) {
       table_html <- knitr::kable(
-        data_updated_new,
+        data_updated_s,
         format = "html",
         table.attr = "border='1' cellpadding='3' cellspacing='0'"
       )
 
       msg <- paste0(
-        "<html><body>",
-        "<p>Hello,</p>",
+        msg,
         "<p>The following rows were updated:</p>",
-        table_html,
-        "</body></html>"
+        table_html
       )
     } else {
-      sbj = paste(
-        "Script",
-        stk,
-        "record executed for ",
+      msg = paste0(
+        msg,
+        "<p>Script ",
+        s,
+        " record executed for ",
         current_date,
-        " - no updates"
+        " - no updates</p>"
       )
-      msg = ""
     }
-
-    from <- "oscar.alfaro@eurocontrol.int"
-    to <- c(
-      "oscar.alfaro@eurocontrol.int"
-      # "quinten.goens@eurocontrol.int",
-      # "enrico.spinielli@eurocontrol.int",
-      # "delia.budulan@eurocontrol.int",
-      # , "nora.cashman@eurocontrol.int"
-    )
-
-    control <- list(smtpServer = "mailservices.eurocontrol.int")
-
-    ## send ----
-    sendmail(
-      from = from,
-      to = to,
-      subject = sbj,
-      msg = mime_part_html(msg),
-      control = control
-    )
   }
 
-  walk(stk, run_for_stk)
+  msg <- paste0(msg, "</body></html>")
+
+  from <- "oscar.alfaro@eurocontrol.int"
+  to <- c(
+    "oscar.alfaro@eurocontrol.int"
+    # "quinten.goens@eurocontrol.int",
+    # "enrico.spinielli@eurocontrol.int",
+    # "delia.budulan@eurocontrol.int",
+    # , "nora.cashman@eurocontrol.int"
+  )
+
+  control <- list(smtpServer = "mailservices.eurocontrol.int")
+
+  ## send ----
+  sendmail(
+    from = from,
+    to = to,
+    subject = sbj,
+    msg = mime_part_html(msg),
+    control = control
+  )
+
+  # walk(stk, run_for_stk)
 }
 
 walk(current_date, run_for_day)
-
-# test commit
