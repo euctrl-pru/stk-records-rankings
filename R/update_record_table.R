@@ -769,7 +769,7 @@ run_for_day <- function(current_date) {
   results <- set_names(stk) |>
     map(run_for_stk)
 
-  # send email ----
+  # send emails ----
   ## email parameters ----
   msg <- ''
   msg <- paste0(
@@ -827,6 +827,65 @@ run_for_day <- function(current_date) {
     control = control
   )
 
+  ### email for big records only
+
+  msg <- ''
+  msg <- paste0(
+    "<html><body>",
+    "<p>Hello,</p>"
+  )
+  sbj = paste("New stakeholder traffic records for", current_date)
+
+  records_beat <- 0
+
+  for (s in stk) {
+    data_updated_s <- results[[s]] %>%
+      filter(
+        RANK_PERIOD %in%
+          c("DAY", "WEEK", "MONTH", "QUARTER", "YEAR") &
+          RANK == 1
+      )
+
+    if (nrow(data_updated_s) > 0) {
+      records_beat <- records_beat + 1
+
+      table_html <- knitr::kable(
+        data_updated_s,
+        format = "html",
+        table.attr = "border='1' cellpadding='3' cellspacing='0'"
+      )
+
+      msg <- paste0(
+        msg,
+        "<p>The stakeholders beat previous records:</p>",
+        table_html
+      )
+    }
+  }
+
+  msg <- paste0(msg, "</body></html>")
+
+  from <- "oscar.alfaro@eurocontrol.int"
+  to <- c(
+    "oscar.alfaro@eurocontrol.int"
+    # "denis.huet@eurocontrol.int",
+    # "nora.cashman@eurocontrol.int",
+    # "kateryna.alifirenko@eurocontrol.int",
+    # , "daria.andrzejewska@eurocontrol.int"
+  )
+
+  control <- list(smtpServer = "mailservices.eurocontrol.int")
+
+  ## send ----
+  if (records_beat != 0) {
+    # sendmail(
+    #   from = from,
+    #   to = to,
+    #   subject = sbj,
+    #   msg = mime_part_html(msg),
+    #   control = control
+    # )
+  }
   # walk(stk, run_for_stk)
 }
 
