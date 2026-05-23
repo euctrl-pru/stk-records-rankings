@@ -6,6 +6,7 @@ colnames_ao <- c(
   "AVG_FLT",
   "RANK",
   "PERIOD",
+  "DAYS_PERIOD",
   "LAST_UPDATED"
 )
 
@@ -15,6 +16,7 @@ colnames_ao_grp <- c(
   "AVG_FLT",
   "RANK",
   "PERIOD",
+  "DAYS_PERIOD",
   "LAST_UPDATED"
 )
 
@@ -26,6 +28,7 @@ colnames_ap <- c(
   "AVG_DEP_ARR",
   "RANK",
   "PERIOD",
+  "DAYS_PERIOD",
   "LAST_UPDATED"
 )
 
@@ -36,6 +39,7 @@ colnames_sp <- c(
   "AVG_FLT",
   "RANK",
   "PERIOD",
+  "DAYS_PERIOD",
   "LAST_UPDATED"
 )
 
@@ -46,6 +50,7 @@ colnames_st_aua_daio <- c(
   "AVG_FLT_DAIO",
   "RANK",
   "PERIOD",
+  "DAYS_PERIOD",
   "LAST_UPDATED"
 )
 
@@ -56,5 +61,6 @@ colnames_st_dai <- c(
   "AVG_FLT_DAI",
   "RANK",
   "PERIOD",
+  "DAYS_PERIOD",
   "LAST_UPDATED"
 )

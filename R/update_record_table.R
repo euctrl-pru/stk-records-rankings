@@ -45,7 +45,8 @@ ap_traffic_update_query <- "
        AND a.ADES_DAY_FLT_DATE >= b.valid_from
        AND a.ADES_DAY_FLT_DATE <= b.valid_to
       WHERE a.ADES_DAY_FLT_DATE >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
-      AND a.ADES_DAY_FLT_DATE < TO_DATE({to_date_str}, 'YYYY-MM-DD')        AND b.bk_ap_id IN ({list_id_ap*})
+      AND a.ADES_DAY_FLT_DATE < TO_DATE({to_date_str}, 'YYYY-MM-DD')
+      AND b.bk_ap_id IN ({list_id_ap*})
       GROUP BY
           a.ADES_DAY_FLT_DATE,
           b.bk_ap_id
@@ -435,7 +436,7 @@ SELECT * FROM DATA_SPAIN_TOGETHER
 # CALCS ----
 ## set params & toggles ----
 backup_folder <- 'G:/HQ/dgof-pru/Data/DataProcessing/Covid19/Archive'
-toggle_write_db <- TRUE
+toggle_write_db <- FALSE
 agg_period <- "day"
 # agg_period <- "month"
 # current date not included in the dataset. Max day + 1
@@ -443,16 +444,19 @@ current_date <- today()
 # current_date <- seq.Date(ymd("20260425"), ymd("20260501"))
 
 stk <- c("ap", "sp", "ao", "ao_grp", "st_dai")
-# stk <- c("st_dai")
+# stk <- c("ap")
 
 run_for_day <- function(current_date) {
   if (day(current_date) == 1) {
     agg_period <- append(agg_period, "month")
-  } else if (wday(current_date, week_start = 1) == 1) {
+  }
+  if (wday(current_date, week_start = 1) == 1) {
     agg_period <- append(agg_period, "week")
-  } else if (day(current_date) == 1 & month(current_date) %in% c(1, 4, 7, 10)) {
+  }
+  if (day(current_date) == 1 & month(current_date) %in% c(1, 4, 7, 10)) {
     agg_period <- append(agg_period, "quarter")
-  } else if (yday(current_date) == 1) {
+  }
+  if (yday(current_date) == 1) {
     agg_period <- append(agg_period, "year")
   }
 
@@ -460,9 +464,9 @@ run_for_day <- function(current_date) {
     message(paste("running", stk))
 
     run_for_agg_period <- function(agg_period) {
-      # agg_period <- "day"
+      # agg_period <- "week"
       if (agg_period == "day") {
-        # from_date <- ymd("20260515")
+        # from_date <- ymd("20260522") - days(7)
         from_date <- current_date - days(1)
       } else if (agg_period == "week") {
         from_date <- current_date - days(7)
@@ -512,6 +516,7 @@ run_for_day <- function(current_date) {
         mutate(
           AVG_FLT = FLT / days_period,
           INIT_DATE_PERIOD = from_date,
+          DAYS_PERIOD = days_period,
           LAST_UPDATED = now(),
           NEW_ENTRY = "Y"
         ) %>%
@@ -548,6 +553,7 @@ run_for_day <- function(current_date) {
         "AVG_FLT",
         "RANK",
         "PERIOD",
+        "DAYS_PERIOD",
         "LAST_UPDATED"
       )
       colnames(data_source) <- norm_source_colnames
@@ -579,7 +585,7 @@ run_for_day <- function(current_date) {
       }
 
       data_ranking_update <- function(rank_period) {
-        # rank_period <- "MONTH_04"
+        # rank_period <- "WEEK"
         ### filter new and source data depending on rank_period
         if (rank_period %in% c("DAY", "WEEK", "MONTH", "QUARTER", "YEAR")) {
           data_base_period <- data_base
@@ -631,6 +637,7 @@ run_for_day <- function(current_date) {
             ID,
             INIT_DATE_PERIOD,
             AVG_FLT,
+            DAYS_PERIOD,
             LAST_UPDATED,
             NEW_ENTRY
           ) %>%
@@ -642,6 +649,7 @@ run_for_day <- function(current_date) {
             ID,
             INIT_DATE_PERIOD,
             AVG_FLT,
+            DAYS_PERIOD,
             LAST_UPDATED
           ) %>%
           mutate(NEW_ENTRY = "N") %>%
@@ -665,8 +673,7 @@ run_for_day <- function(current_date) {
               RANK >= MIN_RANK_UPDATE,
               now(),
               LAST_UPDATED
-            ),
-            DAYS_PERIOD = days_period
+            )
           ) %>%
           select(
             ID,
@@ -674,14 +681,14 @@ run_for_day <- function(current_date) {
             AVG_FLT,
             RANK,
             PERIOD,
+            DAYS_PERIOD,
             LAST_UPDATED,
-            NEW_ENTRY,
-            DAYS_PERIOD
+            NEW_ENTRY
           )
 
         ## rename columns specific to stakeholder
         mycolnames <- get(paste0('colnames_', stk))
-        mycolnames <- append(mycolnames, c("NEW_ENTRY", "DAYS_PERIOD"))
+        mycolnames <- append(mycolnames, c("NEW_ENTRY"))
         colnames(data_updated) <- mycolnames
 
         if (
@@ -692,7 +699,7 @@ run_for_day <- function(current_date) {
 
           con <- eurocontrol::db_connection(schema = "PRU_READ")
 
-          source_table_sql <- source_table <- DBI::SQL(source_table)
+          source_table_sql <- DBI::SQL(source_table)
           id_field <- DBI::SQL(get(paste0("colnames_", stk))[1])
 
           sql_delete <- glue_sql(
@@ -759,7 +766,8 @@ run_for_day <- function(current_date) {
         !!sym(metric_col),
         RANK,
         AGG_PERIOD,
-        RANK_PERIOD = PERIOD
+        RANK_PERIOD = PERIOD,
+        DAYS_PERIOD
       ) %>%
       arrange(STK_NAME, AGG_PERIOD, RANK_PERIOD)
 
@@ -770,7 +778,8 @@ run_for_day <- function(current_date) {
     map(run_for_stk)
 
   # send emails ----
-  ## email parameters ----
+  ## daily ----
+  ### email parameters ----
   msg <- ''
   msg <- paste0(
     "<html><body>",
@@ -818,7 +827,7 @@ run_for_day <- function(current_date) {
 
   control <- list(smtpServer = "mailservices.eurocontrol.int")
 
-  ## send ----
+  ### send ----
   sendmail(
     from = from,
     to = to,
@@ -827,8 +836,8 @@ run_for_day <- function(current_date) {
     control = control
   )
 
-  ### email for big records only
-
+  ## big records only ----
+  ### email params ----
   msg <- ''
   msg <- paste0(
     "<html><body>",
@@ -838,7 +847,7 @@ run_for_day <- function(current_date) {
 
   records_beat <- 0
 
-  for (s in stk) {
+  for (s in stk[!stk %in% c("ao")]) {
     data_updated_s <- results[[s]] %>%
       filter(
         RANK_PERIOD %in%
@@ -849,8 +858,63 @@ run_for_day <- function(current_date) {
     if (nrow(data_updated_s) > 0) {
       records_beat <- records_beat + 1
 
+      ### load rec table to get #2 entry ----
+      s_id_list <- data_updated_s %>% select(STK_ID) %>% pull()
+
+      rec_table_name <- paste0("RECORD_", toupper(s), "_FLT")
+      rec_table <- export_query(
+        glue("SELECT * FROM {rec_table_name}")
+      )
+
+      col_name_flt_avg <- names(rec_table)[grepl("AVG", names(rec_table))][1]
+
+      rec_table_filtered <- rec_table %>%
+        rename(
+          STK_ID = 1,
+          AVG_FLT_PREV = 3,
+          INIT_DATE_PERIOD_PREV = INIT_DATE_PERIOD
+        ) %>%
+        filter(STK_ID %in% s_id_list, RANK == 2) %>%
+        group_by(STK_ID, PERIOD) %>%
+        arrange(desc(INIT_DATE_PERIOD_PREV), .by_group = TRUE) %>%
+        slice(1) %>%
+        ungroup()
+
+      data_updated_s_prev <- data_updated_s %>%
+        left_join(
+          rec_table_filtered,
+          by = c("STK_ID", "RANK_PERIOD" = "PERIOD")
+        ) %>%
+        mutate(
+          TOTAL_FLT_PREV = round(AVG_FLT_PREV * DAYS_PERIOD, 0),
+          TOTAL_FLT = round(.data[[col_name_flt_avg]] * DAYS_PERIOD, 0)
+        ) %>%
+        select(
+          STK_NAME,
+          STK_CODE,
+          INIT_DATE_PERIOD,
+          !!sym(col_name_flt_avg),
+          TOTAL_FLT,
+          INIT_DATE_PERIOD_PREV,
+          AVG_FLT_PREV,
+          TOTAL_FLT_PREV
+        )
+
+      new_colnames <- c(
+        "STK_NAME",
+        "STK_CODE",
+        "INIT_DATE_PERIOD",
+        col_name_flt_avg,
+        sub("AVG", "TOTAL", col_name_flt_avg),
+        "INIT_DATE_PERIOD_PREV",
+        paste0(col_name_flt_avg, "_PREV"),
+        paste0(sub("AVG", "TOTAL", col_name_flt_avg), "_PREV")
+      )
+
+      colnames(data_updated_s_prev) <- new_colnames
+
       table_html <- knitr::kable(
-        data_updated_s,
+        data_updated_s_prev,
         format = "html",
         table.attr = "border='1' cellpadding='3' cellspacing='0'"
       )
@@ -876,17 +940,53 @@ run_for_day <- function(current_date) {
 
   control <- list(smtpServer = "mailservices.eurocontrol.int")
 
-  ## send ----
+  ### send ----
   if (records_beat != 0) {
-    # sendmail(
-    #   from = from,
-    #   to = to,
-    #   subject = sbj,
-    #   msg = mime_part_html(msg),
-    #   control = control
-    # )
+    sendmail(
+      from = from,
+      to = to,
+      subject = sbj,
+      msg = mime_part_html(msg),
+      control = control
+    )
   }
   # walk(stk, run_for_stk)
 }
 
 walk(current_date, run_for_day)
+
+#add day period to tables
+# mytable <- "RECORD_ST_DAI_FLT_OLD"
+#
+# df <- export_query(glue("select * from {mytable}"))
+#
+# df_mod <- df %>%
+#   mutate(
+#     init_date_period = as.Date(INIT_DATE_PERIOD),
+#     DAYS_PERIOD = case_when(
+#       PERIOD %in%
+#         c(
+#           "DAY",
+#           "MONDAY",
+#           "TUESDAY",
+#           "WEDNESDAY",
+#           "THURSDAY",
+#           "FRIDAY",
+#           "SATURDAY",
+#           "SUNDAY"
+#         ) ~ 1L,
+#       PERIOD == "WEEK" ~ 7L,
+#       PERIOD %in% c("MONTH", paste0("MONTH_", sprintf("%02d", 1:12))) ~
+#         as.integer(days_in_month(init_date_period)),
+#       PERIOD %in% c("QUARTER", paste0("QUARTER_", sprintf("%02d", 1:4))) ~
+#         as.integer((init_date_period %m+% months(3)) - init_date_period),
+#       PERIOD == "YEAR" ~
+#         as.integer((init_date_period %m+% years(1)) - init_date_period),
+#       TRUE ~ NA_integer_
+#     )
+#   ) %>%
+#   select(-init_date_period) %>%
+#   relocate(DAYS_PERIOD, .before = LAST_UPDATED)
+#
+#
+# write_table_oracle(df_mod, "RECORD_ST_DAI_FLT", append = FALSE)

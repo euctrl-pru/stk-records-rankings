@@ -1,3 +1,4 @@
+###NOTE script to be adapted to add column DAYS_PERIOD as in update script
 # LIBRARIES ----
 source("R/libraries.R")
 
