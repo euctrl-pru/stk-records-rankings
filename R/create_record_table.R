@@ -1,4 +1,3 @@
-###NOTE script to be adapted to add column DAYS_PERIOD as in update script
 # LIBRARIES ----
 source("R/libraries.R")
 
@@ -10,6 +9,9 @@ source("R/dimensions.R")
 
 # PARAMS ----
 source("R/params.R")
+
+### set stakeholder
+stk <- "ao_grp"
 
 # QUERIES ----
 ## NOTE: Whatever the stakeholder, the output of the query should be,  in this order, stakeholder Id, date, flights. The name of the fields doesn't matter, but the order is important.
@@ -410,8 +412,6 @@ FLIGHTS AS (
 "
 
 # GET BASIC DATA ----
-### set stakeholder
-stk <- "st_dai"
 
 ### build query ----
 con <- eurocontrol::db_connection(schema = "PRU_READ")
@@ -439,7 +439,7 @@ data_raw <- export_query(base_query)
 #     'G:/HQ/dgof-pru/Project/DDP/Projects/DDP-25-020_Data_snapshot_top_airports_max_flights_days/st_dai_traffic.csv'
 #   )
 
-# data_raw <- read_csv('G:/HQ/dgof-pru/Project/DDP/Projects/DDP-25-020_Data_snapshot_top_airports_max_flights_days/apt_traffic_all_days.csv')
+# data_raw <- read_csv('G:/HQ/dgof-pru/Project/DDP/Projects/DDP-25-020_Data_snapshot_top_airports_max_flights_days/ao_traffic_2019+.csv')
 
 # data_raw <- data_raw_new
 
@@ -469,6 +469,8 @@ if (stk == 'ao' | stk == 'ao_grp') {
       select(AO_GRP_NAME, FLIGHT_DATE, DAY_TFC)
 
     # test_day <- data_stk %>% filter(FLIGHT_DATE == ymd(20260514))
+  } else {
+    data_stk <- data_raw
   }
 } else if (stk == 'st_dai') {
   data_stk <- data_raw %>%
@@ -533,7 +535,9 @@ period_ranking <- function(rank_period) {
       rename(
         INIT_DATE_PERIOD = FLT_DATE,
         AVG_FLT = FLT
-      )
+      ) %>%
+      mutate(DAYS_PERIOD = 1L)
+
     if (rank_period != "DAY") {
       data_filtered <- data_filtered %>%
         filter(
@@ -555,8 +559,8 @@ period_ranking <- function(rank_period) {
       group_by(ID, WEEK_YEAR, WEEK) %>%
       summarise(FLT = sum(FLT, na.rm = TRUE), .groups = "drop") %>%
       mutate(
-        AVG_FLT = FLT / 7,
-        # reconstruct first day of the week - chatgpt
+        DAYS_PERIOD = 7L,
+        AVG_FLT = FLT / DAYS_PERIOD,
         INIT_DATE_PERIOD = as.Date(paste0(WEEK_YEAR, "-01-04")) +
           7 * (WEEK - 1) -
           (wday(as.Date(paste0(WEEK_YEAR, "-01-04")), week_start = 1) - 1)
@@ -568,12 +572,12 @@ period_ranking <- function(rank_period) {
         FLT_DATE = as.Date(FLT_DATE),
         YEAR = year(FLT_DATE),
         MONTH = month(FLT_DATE),
-        DAYS = days_in_month(FLT_DATE)
+        DAYS_PERIOD = days_in_month(FLT_DATE)
       ) %>%
-      group_by(ID, YEAR, MONTH, DAYS) %>%
+      group_by(ID, YEAR, MONTH, DAYS_PERIOD) %>%
       summarise(FLT = sum(FLT, na.rm = TRUE), .groups = "drop") %>%
       mutate(
-        AVG_FLT = FLT / DAYS,
+        AVG_FLT = FLT / DAYS_PERIOD,
         INIT_DATE_PERIOD = ymd(paste0(YEAR, sprintf("%02d", MONTH), "01"))
       )
     if (rank_period != "MONTH") {
@@ -584,30 +588,26 @@ period_ranking <- function(rank_period) {
     data_filtered <- data_norm %>%
       filter(FLT_DATE <= cutoff_date_quarter) %>%
       mutate(
-        FLT_DATE = as.Date(FLT_DATE),
         YEAR = year(FLT_DATE),
-        QUARTER = quarter(FLT_DATE),
-        DAYS = days_in_month(FLT_DATE)
-      ) %>%
-      group_by(ID, YEAR, QUARTER, DAYS) %>%
-      summarise(
-        FLT = sum(FLT, na.rm = TRUE),
-        .groups = "drop"
+        QUARTER = quarter(FLT_DATE)
       ) %>%
       group_by(ID, YEAR, QUARTER) %>%
       summarise(
         FLT = sum(FLT, na.rm = TRUE),
-        DAYS = sum(DAYS, na.rm = TRUE),
         .groups = "drop"
       ) %>%
       mutate(
-        AVG_FLT = FLT / DAYS,
         INIT_DATE_PERIOD = ymd(paste0(
           YEAR,
           sprintf("%02d", (QUARTER - 1) * 3 + 1),
           "01"
-        ))
+        )),
+        DAYS_PERIOD = as.integer(
+          (INIT_DATE_PERIOD %m+% months(3)) - INIT_DATE_PERIOD
+        ),
+        AVG_FLT = FLT / DAYS_PERIOD
       )
+
     if (rank_period != "QUARTER") {
       data_filtered <- data_filtered %>%
         filter(sprintf("%02d", QUARTER) == str_sub(rank_period, -2, -1))
@@ -617,12 +617,12 @@ period_ranking <- function(rank_period) {
       filter(FLT_DATE <= cutoff_date_year) %>%
       mutate(
         YEAR = year(FLT_DATE),
-        DAYS = if_else(leap_year(YEAR), 366, 365)
+        DAYS_PERIOD = if_else(leap_year(YEAR), 366, 365)
       ) %>%
-      group_by(ID, YEAR, DAYS) %>%
+      group_by(ID, YEAR, DAYS_PERIOD) %>%
       summarise(FLT = sum(FLT, na.rm = TRUE), .groups = "drop") %>%
       mutate(
-        AVG_FLT = FLT / DAYS,
+        AVG_FLT = FLT / DAYS_PERIOD,
         # reconstruct first day of the week - chatgpt
         INIT_DATE_PERIOD = ymd(paste0(YEAR, "0101"))
       )
@@ -632,7 +632,8 @@ period_ranking <- function(rank_period) {
     select(
       ID,
       INIT_DATE_PERIOD,
-      AVG_FLT
+      AVG_FLT,
+      DAYS_PERIOD
     ) %>%
     group_by(ID) %>%
     mutate(RANK = dense_rank(-AVG_FLT)) %>%
@@ -642,6 +643,15 @@ period_ranking <- function(rank_period) {
     mutate(
       PERIOD = rank_period,
       LAST_UPDATED = now()
+    ) %>%
+    select(
+      ID,
+      INIT_DATE_PERIOD,
+      AVG_FLT,
+      RANK,
+      PERIOD,
+      DAYS_PERIOD,
+      LAST_UPDATED
     )
 
   colnames(data_ranking) <- get(paste0("colnames_", stk))

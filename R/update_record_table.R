@@ -441,10 +441,11 @@ agg_period <- "day"
 # agg_period <- "month"
 # current date not included in the dataset. Max day + 1
 current_date <- today()
-# current_date <- seq.Date(ymd("20260425"), ymd("20260501"))
+# current_date <- ymd("20260506")
+# current_date <- seq.Date(ymd("20260513"), today())
 
 stk <- c("ap", "sp", "ao", "ao_grp", "st_dai")
-# stk <- c("ap")
+# stk <- c("ao_grp")
 
 run_for_day <- function(current_date) {
   if (day(current_date) == 1) {
@@ -464,7 +465,7 @@ run_for_day <- function(current_date) {
     message(paste("running", stk))
 
     run_for_agg_period <- function(agg_period) {
-      # agg_period <- "week"
+      # agg_period <- "day"
       if (agg_period == "day") {
         # from_date <- ymd("20260522") - days(7)
         from_date <- current_date - days(1)
@@ -585,7 +586,7 @@ run_for_day <- function(current_date) {
       }
 
       data_ranking_update <- function(rank_period) {
-        # rank_period <- "WEEK"
+        # rank_period <- "DAY"
         ### filter new and source data depending on rank_period
         if (rank_period %in% c("DAY", "WEEK", "MONTH", "QUARTER", "YEAR")) {
           data_base_period <- data_base
@@ -717,7 +718,7 @@ run_for_day <- function(current_date) {
 
           ### write table ----
           data_updated_table <- data_updated %>%
-            select(-NEW_ENTRY, -DAYS_PERIOD)
+            select(-NEW_ENTRY)
           write_table_oracle(data_updated_table, source_table, append = TRUE)
         }
 
@@ -785,16 +786,28 @@ run_for_day <- function(current_date) {
     "<html><body>",
     "<p>Hello,</p>"
   )
-  sbj = paste("Record table updates for", current_date)
+  sbj = paste("Record table updates for", current_date - days(1))
 
   for (s in stk) {
-    data_updated_s <- results[[s]]
+    data_updated_s <- results[[s]] %>%
+      mutate(
+        across(
+          -STK_ID & where(is.numeric),
+          ~ format(
+            round(.x, 0),
+            big.mark = ",",
+            scientific = FALSE,
+            trim = TRUE
+          )
+        )
+      )
 
     if (nrow(data_updated_s) > 0) {
       table_html <- knitr::kable(
         data_updated_s,
         format = "html",
-        table.attr = "border='1' cellpadding='3' cellspacing='0'"
+        table.attr = "border='1' cellpadding='3' cellspacing='0'",
+        align = c("l", "l", "l", rep("r", ncol(data_updated_s) - 3))
       )
 
       msg <- paste0(
@@ -808,7 +821,7 @@ run_for_day <- function(current_date) {
         "<p>Script ",
         s,
         " record executed for ",
-        current_date,
+        current_date - days(1),
         " - no updates</p>"
       )
     }
@@ -843,7 +856,7 @@ run_for_day <- function(current_date) {
     "<html><body>",
     "<p>Hello,</p>"
   )
-  sbj = paste("New stakeholder traffic records for", current_date)
+  sbj = paste("New stakeholder traffic records for", current_date - days(1))
 
   records_beat <- 0
 
@@ -872,7 +885,8 @@ run_for_day <- function(current_date) {
         rename(
           STK_ID = 1,
           AVG_FLT_PREV = 3,
-          INIT_DATE_PERIOD_PREV = INIT_DATE_PERIOD
+          INIT_DATE_PERIOD_PREV = INIT_DATE_PERIOD,
+          DAYS_PERIOD_PREV = DAYS_PERIOD
         ) %>%
         filter(STK_ID %in% s_id_list, RANK == 2) %>%
         group_by(STK_ID, PERIOD) %>%
@@ -886,23 +900,37 @@ run_for_day <- function(current_date) {
           by = c("STK_ID", "RANK_PERIOD" = "PERIOD")
         ) %>%
         mutate(
-          TOTAL_FLT_PREV = round(AVG_FLT_PREV * DAYS_PERIOD, 0),
+          INIT_DATE_PERIOD_PREV = as.Date(INIT_DATE_PERIOD_PREV),
+          TOTAL_FLT_PREV = round(AVG_FLT_PREV * DAYS_PERIOD_PREV, 0),
           TOTAL_FLT = round(.data[[col_name_flt_avg]] * DAYS_PERIOD, 0)
         ) %>%
         select(
           STK_NAME,
           STK_CODE,
+          RANK_PERIOD,
           INIT_DATE_PERIOD,
           !!sym(col_name_flt_avg),
           TOTAL_FLT,
           INIT_DATE_PERIOD_PREV,
           AVG_FLT_PREV,
           TOTAL_FLT_PREV
+        ) %>%
+        mutate(
+          across(
+            where(is.numeric),
+            ~ format(
+              round(.x, 0),
+              big.mark = ",",
+              scientific = FALSE,
+              trim = TRUE
+            )
+          )
         )
 
       new_colnames <- c(
         "STK_NAME",
         "STK_CODE",
+        "PERIOD",
         "INIT_DATE_PERIOD",
         col_name_flt_avg,
         sub("AVG", "TOTAL", col_name_flt_avg),
@@ -916,7 +944,8 @@ run_for_day <- function(current_date) {
       table_html <- knitr::kable(
         data_updated_s_prev,
         format = "html",
-        table.attr = "border='1' cellpadding='3' cellspacing='0'"
+        table.attr = "border='1' cellpadding='3' cellspacing='0'",
+        align = c("l", "l", "l", rep("r", ncol(data_updated_s_prev) - 3))
       )
 
       msg <- paste0(
@@ -931,11 +960,11 @@ run_for_day <- function(current_date) {
 
   from <- "oscar.alfaro@eurocontrol.int"
   to <- c(
-    "oscar.alfaro@eurocontrol.int"
+    "oscar.alfaro@eurocontrol.int",
     # "denis.huet@eurocontrol.int",
     # "nora.cashman@eurocontrol.int",
     # "kateryna.alifirenko@eurocontrol.int",
-    # , "daria.andrzejewska@eurocontrol.int"
+    # "daria.andrzejewska@eurocontrol.int"
   )
 
   control <- list(smtpServer = "mailservices.eurocontrol.int")
