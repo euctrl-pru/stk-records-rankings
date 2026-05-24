@@ -11,7 +11,7 @@ source("R/dimensions.R")
 source("R/params.R")
 
 ### set stakeholder
-stk <- "ao_grp"
+stk <- "ap"
 
 # QUERIES ----
 ## NOTE: Whatever the stakeholder, the output of the query should be,  in this order, stakeholder Id, date, flights. The name of the fields doesn't matter, but the order is important.
@@ -439,7 +439,7 @@ data_raw <- export_query(base_query)
 #     'G:/HQ/dgof-pru/Project/DDP/Projects/DDP-25-020_Data_snapshot_top_airports_max_flights_days/st_dai_traffic.csv'
 #   )
 
-# data_raw <- read_csv('G:/HQ/dgof-pru/Project/DDP/Projects/DDP-25-020_Data_snapshot_top_airports_max_flights_days/ao_traffic_2019+.csv')
+# data_raw <- read_csv('G:/HQ/dgof-pru/Project/DDP/Projects/DDP-25-020_Data_snapshot_top_airports_max_flights_days/apt_traffic_all_days.csv')
 
 # data_raw <- data_raw_new
 

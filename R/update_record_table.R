@@ -442,10 +442,10 @@ agg_period <- "day"
 # current date not included in the dataset. Max day + 1
 current_date <- today()
 # current_date <- ymd("20260506")
-# current_date <- seq.Date(ymd("20260513"), today())
+# current_date <- seq.Date(ymd("20260520"), ymd("20260522"))
 
 stk <- c("ap", "sp", "ao", "ao_grp", "st_dai")
-# stk <- c("ao_grp")
+# stk <- c("ap")
 
 run_for_day <- function(current_date) {
   if (day(current_date) == 1) {
@@ -772,6 +772,42 @@ run_for_day <- function(current_date) {
       ) %>%
       arrange(STK_NAME, AGG_PERIOD, RANK_PERIOD)
 
+    if (stk == 'ao_grp') {
+      data_updated_new <- data_updated_new %>%
+        mutate(
+          FINAL_DATE_PERIOD = INIT_DATE_PERIOD + days(DAYS_PERIOD - 1)
+        ) %>%
+        left_join(
+          list_ao_grp,
+          by = join_by(
+            STK_ID == AO_GRP_NAME,
+            FINAL_DATE_PERIOD >= WEF,
+            FINAL_DATE_PERIOD <= TIL
+          )
+        ) %>%
+        mutate(
+          STK_CODE = AO_GRP_CODE,
+          STK_NAME = STK_ID
+        ) %>%
+        select(
+          STK_ID,
+          STK_NAME,
+          STK_CODE,
+          INIT_DATE_PERIOD,
+          AVG_FLT,
+          RANK,
+          AGG_PERIOD,
+          RANK_PERIOD,
+          DAYS_PERIOD
+        )
+    }
+
+    if (stk == 'sp') {
+      data_updated_new <- data_updated_new %>%
+        # fmt: skip
+        filter(STK_ID %in% c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,26,27,28,29,30,31,32,33,39,42,44,45,46,50,53,56,57))
+    }
+
     return(data_updated_new)
   }
 
@@ -854,7 +890,8 @@ run_for_day <- function(current_date) {
   msg <- ''
   msg <- paste0(
     "<html><body>",
-    "<p>Hello,</p>"
+    "<p>Hello,</p>",
+    "<p>The stakeholders below beat previous records:</p>"
   )
   sbj = paste("New stakeholder traffic records for", current_date - days(1))
 
@@ -950,8 +987,8 @@ run_for_day <- function(current_date) {
 
       msg <- paste0(
         msg,
-        "<p>The stakeholders beat previous records:</p>",
-        table_html
+        table_html,
+        '</br>'
       )
     }
   }
@@ -960,7 +997,7 @@ run_for_day <- function(current_date) {
 
   from <- "oscar.alfaro@eurocontrol.int"
   to <- c(
-    "oscar.alfaro@eurocontrol.int",
+    "oscar.alfaro@eurocontrol.int"
     # "denis.huet@eurocontrol.int",
     # "nora.cashman@eurocontrol.int",
     # "kateryna.alifirenko@eurocontrol.int",

@@ -122,7 +122,6 @@ FROM PRUDEV.V_PRU_REL_CFMU_AUA_ANSP
 
 list_sp <- dim_sp
 
-
 ## COUNTRY ICAO ----
 dim_st_icao <- export_query(
   "
