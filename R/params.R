@@ -25,15 +25,15 @@ colnames_ap <- common_columns %>%
 
 ## ANSP ----
 colnames_sp <- common_columns %>%
-  gsub("ANSP_ID", "BK_AP_ID", .) %>%
+  gsub("PLACEHOLDER_ID", "ANSP_ID", .) %>%
   gsub("PLACEHOLDER_FLT", "AVG_FLT", .)
 
 ## COUNTRY DAIO ----
 colnames_st_aua_daio <- common_columns %>%
-  gsub("ANSP_ID", "EC_ICAO_COUNTRY_CODE", .) %>%
+  gsub("PLACEHOLDER_ID", "EC_ICAO_COUNTRY_CODE", .) %>%
   gsub("PLACEHOLDER_FLT", "AVG_FLT_DAIO", .)
 
 ## COUNTRY DAI ----
 colnames_st_dai <- common_columns %>%
-  gsub("ANSP_ID", "EC_ICAO_COUNTRY_CODE", .) %>%
+  gsub("PLACEHOLDER_ID", "EC_ICAO_COUNTRY_CODE", .) %>%
   gsub("PLACEHOLDER_FLT", "AVG_FLT_DAI", .)
