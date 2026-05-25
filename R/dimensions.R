@@ -1,3 +1,14 @@
+## Network ----
+dim_nw <- data.frame(
+  STK_ID = c("NM Area"),
+  STK_CODE = c("NM Area"),
+  STK_NAME = c("NM Area")
+) %>%
+  mutate(
+    VALID_FROM = ymd("19000101"),
+    VALID_TO = ymd("29991231"),
+  )
+
 ## Airlines and groups ----
 dim_ao <- export_query(
   "select

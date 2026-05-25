@@ -11,6 +11,19 @@ source("R/dimensions.R")
 source("R/params.R")
 
 # QUERIES ----
+## Network ----
+nw_traffic_update_query <- "
+  select     'NM Area' as STK_ID,
+a_first_entry_time_date FLIGHT_DATE ,
+SUM(nvl(a.all_traffic,0)) FLT
+FROM  ARU_SYN.AGG_GLOBAL_DAILY_COUNTS  a
+WHERE
+a.a_first_entry_time_date >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+AND a.a_first_entry_time_date  < TO_DATE({to_date_str}, 'YYYY-MM-DD')
+GROUP BY  a.a_first_entry_time_date
+ORDER BY a_first_entry_time_date
+"
+
 ## Airport ----
 ap_traffic_update_query <- "
   WITH
@@ -444,8 +457,8 @@ current_date <- today()
 # current_date <- ymd("20260506")
 # current_date <- seq.Date(ymd("20260520"), ymd("20260522"))
 
-stk <- c("ap", "sp", "ao", "ao_grp", "st_dai")
-# stk <- c("ap")
+stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st_dai")
+# stk <- c("nw")
 
 run_for_day <- function(current_date) {
   if (day(current_date) == 1) {

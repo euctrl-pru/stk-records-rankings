@@ -11,7 +11,7 @@ source("R/dimensions.R")
 source("R/params.R")
 
 ### set stakeholder
-stk <- "ap"
+stk <- "nw"
 
 # QUERIES ----
 ## NOTE: Whatever the stakeholder, the output of the query should be,  in this order, stakeholder Id, date, flights. The name of the fields doesn't matter, but the order is important.
@@ -48,6 +48,19 @@ test_nw <- test_nw_1 %>%
   # filter(!is.na(CHECK)) %>%
   arrange(desc(TDM)) %>%
   slice(1:10)
+
+nw_traffic_query <-
+  "select     'NM Area' as STK_ID,
+                a_first_entry_time_date FLIGHT_DATE ,
+                SUM(nvl(a.all_traffic,0)) FLT
+--                SUM(nvl(a.total_delay_in_minutes,0)) TDM
+           FROM  ARU_SYN.AGG_GLOBAL_DAILY_COUNTS  a
+           WHERE
+            a.a_first_entry_time_date  < TRUNC (SYSDATE)
+           GROUP BY  a.a_first_entry_time_date
+ORDER BY a_first_entry_time_date
+"
+
 
 ## Airport ----
 ap_traffic_query <- "

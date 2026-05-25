@@ -9,6 +9,11 @@ common_columns <- c(
   "LAST_UPDATED"
 )
 
+## Network ----
+colnames_nw <- common_columns %>%
+  gsub("PLACEHOLDER_ID", "AREA", .) %>%
+  gsub("PLACEHOLDER_FLT", "AVG_FLT", .)
+
 ## Aircraft operator ----
 colnames_ao <- common_columns %>%
   gsub("PLACEHOLDER_ID", "AO_ID", .) %>%
