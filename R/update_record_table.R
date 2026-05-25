@@ -1001,11 +1001,12 @@ run_for_day <- function(current_date) {
   msg <- paste0(msg, "</body></html>")
 
   from <- "oscar.alfaro@eurocontrol.int"
+  # fmt: skip
   to <- c(
     "oscar.alfaro@eurocontrol.int"
-    # "denis.huet@eurocontrol.int",
-    # "nora.cashman@eurocontrol.int",
-    # "kateryna.alifirenko@eurocontrol.int",
+    , "denis.huet@eurocontrol.int"
+    # "nora.cashman@eurocontrol.int"
+    # "kateryna.alifirenko@eurocontrol.int"
     # "daria.andrzejewska@eurocontrol.int"
   )
 
