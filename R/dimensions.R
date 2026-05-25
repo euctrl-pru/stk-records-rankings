@@ -51,7 +51,7 @@ ORDER BY stk_code
   )
 
 
-list_ao_grp <- export_query(
+list_ao_grp_ao <- export_query(
   '
 	SELECT 	ao_id,
 	    ao_code,
@@ -64,12 +64,18 @@ list_ao_grp <- export_query(
 '
 )
 
-rel_ao_id_ao_grp <- list_ao_grp %>%
+rel_ao_id_ao_grp <- list_ao_grp_ao %>%
   distinct(AO_ID, AO_GRP_NAME) %>%
   arrange(AO_GRP_NAME)
 
-list_id_ao <- list_ao_grp %>% distinct(AO_ID) %>% pull(AO_ID)
-list_icao_ao <- list_ao_grp %>% distinct(AO_CODE) %>% pull(AO_CODE)
+list_id_ao <- list_ao_grp_ao %>% distinct(AO_ID) %>% pull(AO_ID)
+list_icao_ao <- list_ao_grp_ao %>% distinct(AO_CODE) %>% pull(AO_CODE)
+list_ao_grp <- list_ao_grp_ao %>%
+  group_by(AO_GRP_NAME) %>%
+  arrange(AO_GRP_NAME, desc(TIL)) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(AO_GRP_NAME, AO_GRP_CODE)
 
 rel_list_ao_old_dim_ao <- read_excel(
   path = here("data", "rel_app_list_ao_dim_ao.xlsx"),

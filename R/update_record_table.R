@@ -739,7 +739,7 @@ run_for_day <- function(current_date) {
 
     data_updated_new <- data_updated %>%
       mutate(
-        DATE_END = INIT_DATE_PERIOD + days(DAYS_PERIOD)
+        DATE_END = INIT_DATE_PERIOD + days(DAYS_PERIOD - 1)
       ) %>%
       left_join(
         dim_stk,
@@ -780,9 +780,7 @@ run_for_day <- function(current_date) {
         left_join(
           list_ao_grp,
           by = join_by(
-            STK_ID == AO_GRP_NAME,
-            FINAL_DATE_PERIOD >= WEF,
-            FINAL_DATE_PERIOD <= TIL
+            STK_ID == AO_GRP_NAME
           )
         ) %>%
         mutate(
@@ -813,6 +811,10 @@ run_for_day <- function(current_date) {
 
   results <- set_names(stk) |>
     map(run_for_stk)
+
+  print(names(results))
+  print(nrow(results[["ap"]]))
+  print(results[["ap"]])
 
   # send emails ----
   ## daily ----
@@ -925,7 +927,10 @@ run_for_day <- function(current_date) {
           INIT_DATE_PERIOD_PREV = INIT_DATE_PERIOD,
           DAYS_PERIOD_PREV = DAYS_PERIOD
         ) %>%
-        filter(STK_ID %in% s_id_list, RANK == 2) %>%
+        filter(
+          STK_ID %in% s_id_list,
+          RANK == if_else(toggle_write_db, 2, 1)
+        ) %>%
         group_by(STK_ID, PERIOD) %>%
         arrange(desc(INIT_DATE_PERIOD_PREV), .by_group = TRUE) %>%
         slice(1) %>%
