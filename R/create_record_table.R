@@ -682,3 +682,11 @@ table_name <- paste0("RECORD_", toupper(stk), "_FLT")
 ## It's commented out to force you to purposefully activate the line only whenever needed
 
 # write_table_oracle(data_ranking, table_name, append = FALSE)
+
+# restore backup
+# stk <- "ap"
+# backup_folder <- 'G:/HQ/dgof-pru/Data/DataProcessing/Covid19/Archive'
+# data_ranking <- read_csv(here(backup_folder, "20260528_record_ap_flt.csv")) %>%
+#
+#
+# table_name <- paste0("RECORD_", toupper(stk), "_FLT")

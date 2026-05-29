@@ -14,3 +14,5 @@ library(sendmailR)
 library(knitr)
 library(purrr)
 library(readxl)
+
+library(pocketlogR)
