@@ -449,7 +449,7 @@ SELECT * FROM DATA_SPAIN_TOGETHER
 # CALCS ----
 ## set params & toggles ----
 backup_folder <- 'G:/HQ/dgof-pru/Data/DataProcessing/Covid19/Archive'
-toggle_write_db <- FALSE
+toggle_write_db <- TRUE
 agg_period <- "day"
 # agg_period <- "month"
 # current date not included in the dataset. Max day + 1
@@ -1057,11 +1057,8 @@ tryCatch(
       conn,
       flow = "stakeholder_traffic_rankings",
       log_type = "data_job",
-      message = sprintf(
-        "Data updated successfully. %d rows processed.",
-        nrow(result)
-      ),
-      metadata = list(rows = nrow(result))
+      message = "Data updated successfully",
+      metadata = NULL
     )
   },
   error = function(e) {
@@ -1071,7 +1068,7 @@ tryCatch(
       flow = "stakeholder_traffic_rankings",
       log_type = "data_job",
       message = sprintf("Process failed. %s", conditionMessage(e)),
-      metadata = list(error_class = class(e)[1])
+      metadata = NULL
     )
   }
 )
