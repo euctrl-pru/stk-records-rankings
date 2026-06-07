@@ -15,10 +15,11 @@ export_query <- function(query, schema = "PRU_READ") {
 }
 
 write_table_oracle <- function(
-    data,
-    table_name,
-    schema = "PRU_READ",
-    append = TRUE
+  data,
+  table_name,
+  schema = "PRU_READ",
+  append = TRUE,
+  overwrite = FALSE
 ) {
   withr::local_envvar(c(
     TZ = "UTC",
@@ -34,6 +35,7 @@ write_table_oracle <- function(
     name = table_name,
     value = data,
     append = append,
+    overwrite = overwrite,
     row.names = FALSE
   )
 }

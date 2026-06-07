@@ -448,7 +448,6 @@ SELECT * FROM DATA_SPAIN_TOGETHER
 
 # CALCS ----
 ## set params & toggles ----
-backup_folder <- 'G:/HQ/dgof-pru/Data/DataProcessing/Covid19/Archive'
 toggle_write_db <- TRUE
 agg_period <- "day"
 # agg_period <- "month"
@@ -835,9 +834,9 @@ tryCatch(
       results <- set_names(stk) |>
         map(run_for_stk)
 
-      print(names(results))
-      print(nrow(results[["ap"]]))
-      print(results[["ap"]])
+      # print(names(results))
+      # print(nrow(results[["ap"]]))
+      # print(results[["ap"]])
 
       # send emails ----
       ## daily ----

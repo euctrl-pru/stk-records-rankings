@@ -1,3 +1,6 @@
+# BACKUP FOLDER ----
+backup_folder <- 'G:/HQ/dgof-pru/Data/DataProcessing/Covid19/Archive'
+
 # COLUMN NAMES ----
 common_columns <- c(
   "PLACEHOLDER_ID",
