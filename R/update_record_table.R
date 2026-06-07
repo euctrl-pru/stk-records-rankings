@@ -457,7 +457,7 @@ current_date <- today()
 # current_date <- seq.Date(ymd("20260520"), ymd("20260522"))
 
 stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st_dai")
-# stk <- c("nw")
+# stk <- c("ao_grp")
 
 # Connect to the pocketlog (pl) instance (picks up credentials from environment variables)
 conn <- pl_connect()
@@ -952,15 +952,19 @@ tryCatch(
               DAYS_PERIOD_PREV = DAYS_PERIOD
             ) %>%
             filter(
-              STK_ID %in% s_id_list,
-              RANK == if_else(toggle_write_db, 2, 1)
+              STK_ID %in% s_id_list
+              # , RANK == if_else(toggle_write_db, 2, 1)
             ) %>%
             group_by(STK_ID, PERIOD) %>%
-            arrange(desc(INIT_DATE_PERIOD_PREV), .by_group = TRUE) %>%
+            arrange(
+              desc(AVG_FLT_PREV),
+              desc(INIT_DATE_PERIOD_PREV),
+              .by_group = TRUE
+            ) %>%
             slice(1) %>%
             ungroup()
 
-          data_updated_s_prev <- data_updated_s %>%
+          data_updated_s_prev_num <- data_updated_s %>%
             left_join(
               rec_table_filtered,
               by = c("STK_ID", "RANK_PERIOD" = "PERIOD")
@@ -979,8 +983,19 @@ tryCatch(
               TOTAL_FLT,
               INIT_DATE_PERIOD_PREV,
               AVG_FLT_PREV,
-              TOTAL_FLT_PREV
+              TOTAL_FLT_PREV,
+              CHECK_EQUAL_RECORD = !!sym(col_name_flt_avg) - AVG_FLT_PREV
             ) %>%
+            filter(CHECK_EQUAL_RECORD != 0)
+
+          # equaled records don't count
+          if (nrow(data_updated_s_prev_num) == 0) {
+            records_beat <- records_beat - 1
+            next
+          }
+
+          data_updated_s_prev <- data_updated_s_prev_num %>%
+            select(-CHECK_EQUAL_RECORD) %>%
             mutate(
               across(
                 where(is.numeric),

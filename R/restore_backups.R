@@ -8,7 +8,7 @@ source("R/helpers.R")
 source("R/params.R")
 
 # stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st_dai")
-stk <- c("st_dai")
+stk <- c("ao_grp")
 
 table_name <- paste0("RECORD_", toupper(stk), "_FLT")
 
