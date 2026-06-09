@@ -21,10 +21,10 @@ agg_period <- "day"
 # current date not included in the dataset. Max day + 1
 current_date <- today()
 # current_date <- ymd("20260530")
-# current_date <- seq.Date(ymd("20260530"), ymd("20260607"))
+# current_date <- seq.Date(ymd("20260530"), ymd("20260609"))
 
 stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st_dai")
-# stk <- c("ap")
+# stk <- c("st_dai")
 
 # Connect to the pocketlog (pl) instance (picks up credentials from environment variables)
 conn <- pl_connect()
