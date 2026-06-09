@@ -8,12 +8,13 @@ source("R/helpers.R")
 source("R/params.R")
 
 # stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st_dai")
-stk <- c("ao_grp")
+stk <- c("nw")
 
 table_name <- paste0("RECORD_", toupper(stk), "_FLT")
 
 # 'LastVersion' or day in format "%Y%m%d"
-backup_version <- 'LastVersion'
+# backup_version <- 'LastVersion'
+backup_version <- "20260528"
 
 
 if (backup_version == 'LastVersion') {
@@ -26,7 +27,7 @@ if (backup_version == 'LastVersion') {
   backup_file <- here(
     backup_folder,
     paste0(
-      format(current_date + days(-1), "%Y%m%d"),
+      backup_version,
       "_",
       tolower(table_name),
       ".csv"

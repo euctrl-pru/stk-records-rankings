@@ -453,11 +453,11 @@ agg_period <- "day"
 # agg_period <- "month"
 # current date not included in the dataset. Max day + 1
 current_date <- today()
-# current_date <- ymd("20260506")
-# current_date <- seq.Date(ymd("20260520"), ymd("20260522"))
+# current_date <- ymd("20260530")
+# current_date <- seq.Date(ymd("20260530"), ymd("20260607"))
 
 stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st_dai")
-# stk <- c("ao_grp")
+# stk <- c("ap")
 
 # Connect to the pocketlog (pl) instance (picks up credentials from environment variables)
 conn <- pl_connect()
@@ -952,15 +952,11 @@ tryCatch(
               DAYS_PERIOD_PREV = DAYS_PERIOD
             ) %>%
             filter(
-              STK_ID %in% s_id_list
-              # , RANK == if_else(toggle_write_db, 2, 1)
+              STK_ID %in% s_id_list,
+              RANK == if_else(toggle_write_db, 2, 1)
             ) %>%
             group_by(STK_ID, PERIOD) %>%
-            arrange(
-              desc(AVG_FLT_PREV),
-              desc(INIT_DATE_PERIOD_PREV),
-              .by_group = TRUE
-            ) %>%
+            arrange(desc(INIT_DATE_PERIOD_PREV), .by_group = TRUE) %>%
             slice(1) %>%
             ungroup()
 
@@ -972,7 +968,8 @@ tryCatch(
             mutate(
               INIT_DATE_PERIOD_PREV = as.Date(INIT_DATE_PERIOD_PREV),
               TOTAL_FLT_PREV = round(AVG_FLT_PREV * DAYS_PERIOD_PREV, 0),
-              TOTAL_FLT = round(.data[[col_name_flt_avg]] * DAYS_PERIOD, 0)
+              TOTAL_FLT = round(.data[[col_name_flt_avg]] * DAYS_PERIOD, 0),
+              CHECK_EQUAL_RECORD = !!sym(col_name_flt_avg) - AVG_FLT_PREV
             ) %>%
             select(
               STK_NAME,
@@ -984,15 +981,15 @@ tryCatch(
               INIT_DATE_PERIOD_PREV,
               AVG_FLT_PREV,
               TOTAL_FLT_PREV,
-              CHECK_EQUAL_RECORD = !!sym(col_name_flt_avg) - AVG_FLT_PREV
+              CHECK_EQUAL_RECORD
             ) %>%
             filter(CHECK_EQUAL_RECORD != 0)
 
           # equaled records don't count
-          if (nrow(data_updated_s_prev_num) == 0) {
-            records_beat <- records_beat - 1
-            next
-          }
+          # if (nrow(data_updated_s_prev_num) == 0) {
+          #   records_beat <- records_beat - 1
+          #   next
+          # }
 
           data_updated_s_prev <- data_updated_s_prev_num %>%
             select(-CHECK_EQUAL_RECORD) %>%
@@ -1042,12 +1039,12 @@ tryCatch(
       from <- "oscar.alfaro@eurocontrol.int"
       # fmt: skip
       to <- c(
-    "oscar.alfaro@eurocontrol.int"
-    , "denis.huet@eurocontrol.int"
-    , "nora.cashman@eurocontrol.int"
-    , "kateryna.alifirenko.ext@eurocontrol.int"
-    , "daria.andrzejewska@eurocontrol.int"
-  )
+        "oscar.alfaro@eurocontrol.int"
+        , "denis.huet@eurocontrol.int"
+        , "nora.cashman@eurocontrol.int"
+        , "kateryna.alifirenko.ext@eurocontrol.int"
+        , "daria.andrzejewska@eurocontrol.int"
+      )
 
       control <- list(smtpServer = "mailservices.eurocontrol.int")
 
