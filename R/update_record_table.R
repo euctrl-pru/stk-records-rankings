@@ -16,18 +16,21 @@ source("R/queries_for_update.R")
 # CALCS ----
 ## set params & toggles ----
 toggle_write_db <- TRUE
+toggle_test <- FALSE
 agg_period <- "day"
 # agg_period <- "month"
 # current date not included in the dataset. Max day + 1
 current_date <- today()
 # current_date <- ymd("20260530")
-# current_date <- seq.Date(ymd("20260530"), ymd("20260609"))
+# current_date <- seq.Date(ymd("20260604"), ymd("20260616"))
 
 stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st_dai")
-# stk <- c("st_dai")
+# stk <- c("ao_grp")
 
 # Connect to the pocketlog (pl) instance (picks up credentials from environment variables)
-conn <- pl_connect()
+if (!toggle_test) {
+  conn <- pl_connect()
+}
 
 # tryCatch block to log both successes and errors
 tryCatch(
@@ -110,27 +113,33 @@ tryCatch(
 
           ### import source table
           source_table <- paste0("RECORD_", toupper(stk), "_FLT")
+          if (toggle_test) {
+            source_table <- paste0("ZZ_BAD_", source_table)
+          }
+
           data_source <- export_query(glue("select * from {source_table}")) %>%
             mutate(INIT_DATE_PERIOD = as.Date(INIT_DATE_PERIOD))
 
           ### backup before manipulating
-          data_source %>%
-            write_csv(here(
-              backup_folder,
-              'LastVersion',
-              paste0(tolower(source_table), ".csv")
-            ))
+          if (!toggle_test) {
+            data_source %>%
+              write_csv(here(
+                backup_folder,
+                'LastVersion',
+                paste0(tolower(source_table), ".csv")
+              ))
 
-          data_source %>%
-            write_csv(here(
-              backup_folder,
-              paste0(
-                format(current_date + days(-1), "%Y%m%d"),
-                "_",
-                tolower(source_table),
-                ".csv"
-              )
-            ))
+            data_source %>%
+              write_csv(here(
+                backup_folder,
+                paste0(
+                  format(current_date + days(-1), "%Y%m%d"),
+                  "_",
+                  tolower(source_table),
+                  ".csv"
+                )
+              ))
+          }
 
           ### normalise dataset
           norm_source_colnames <- c(
@@ -401,6 +410,7 @@ tryCatch(
       results <- set_names(stk) |>
         map(run_for_stk)
 
+      # results <- data_updated_new
       # print(names(results))
       # print(nrow(results[["ap"]]))
       # print(results[["ap"]])
@@ -503,6 +513,10 @@ tryCatch(
           s_id_list <- data_updated_s %>% select(STK_ID) %>% pull()
 
           rec_table_name <- paste0("RECORD_", toupper(s), "_FLT")
+          if (toggle_test) {
+            rec_table_name <- paste0("ZZ_BAD_", rec_table_name)
+          }
+
           rec_table <- export_query(
             glue("SELECT * FROM {rec_table_name}")
           )
@@ -553,10 +567,10 @@ tryCatch(
             filter(CHECK_EQUAL_RECORD != 0)
 
           # equaled records don't count
-          # if (nrow(data_updated_s_prev_num) == 0) {
-          #   records_beat <- records_beat - 1
-          #   next
-          # }
+          if (nrow(data_updated_s_prev_num) == 0) {
+            records_beat <- records_beat - 1
+            next
+          }
 
           data_updated_s_prev <- data_updated_s_prev_num %>%
             select(-CHECK_EQUAL_RECORD) %>%
@@ -607,10 +621,10 @@ tryCatch(
       # fmt: skip
       to <- c(
         "oscar.alfaro@eurocontrol.int"
-        , "denis.huet@eurocontrol.int"
-        , "nora.cashman@eurocontrol.int"
-        , "kateryna.alifirenko.ext@eurocontrol.int"
-        , "daria.andrzejewska@eurocontrol.int"
+        # , "denis.huet@eurocontrol.int"
+        # , "nora.cashman@eurocontrol.int"
+        # , "kateryna.alifirenko.ext@eurocontrol.int"
+        # , "daria.andrzejewska@eurocontrol.int"
       )
 
       control <- list(smtpServer = "mailservices.eurocontrol.int")
@@ -631,13 +645,15 @@ tryCatch(
     walk(current_date, run_for_day)
 
     # After successful execution, log the success with relevant metadata at the end
-    pl_success(
-      conn,
-      flow = "stakeholder_traffic_rankings",
-      log_type = "data_job",
-      message = "Data updated successfully",
-      metadata = NULL
-    )
+    if (!toggle_test) {
+      pl_success(
+        conn,
+        flow = "stakeholder_traffic_rankings",
+        log_type = "data_job",
+        message = "Data updated successfully",
+        metadata = NULL
+      )
+    }
   },
   error = function(e) {
     # In case of an error, log the error details with relevant metadata
