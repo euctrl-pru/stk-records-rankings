@@ -12,6 +12,18 @@ GROUP BY  a.a_first_entry_time_date
 ORDER BY a_first_entry_time_date
 "
 
+nw_delay_update_query <-
+  "SELECT
+   'NM Area' as STK_ID,
+   A_FIRST_ENTRY_TIME_DATE AS regulation_date,
+         SUM (TOTAL_DELAY_IN_MINUTES)                                AS TDM
+--       ,  SUM (TOTAL_DELAY_IN_MINUTES - AIRPORT_DELAY_IN_MINUTES)     AS TDM_ERT
+    FROM ARU_SYN.AGG_GLOBAL_DAILY_COUNTS SYN
+   WHERE A_FIRST_ENTRY_TIME_DATE >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+      AND A_FIRST_ENTRY_TIME_DATE < TO_DATE({to_date_str}, 'YYYY-MM-DD')
+   GROUP BY A_FIRST_ENTRY_TIME_DATE
+"
+
 ## Airport ----
 ap_traffic_update_query <- "
   WITH

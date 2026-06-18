@@ -10,45 +10,19 @@ source("R/dimensions.R")
 # PARAMS ----
 source("R/params.R")
 
-### set stakeholder
+### set stakeholder and kpi
 stk <- "nw"
+kpi <- "dly"
+
+mapping_kpi <- c(
+  flt = "traffic",
+  dly = "delay"
+)
 
 # QUERIES ----
 ## NOTE: Whatever the stakeholder, the output of the query should be,  in this order, stakeholder Id, date, flights. The name of the fields doesn't matter, but the order is important.
 
 ## Network ----
-test_nw_1 <- export_query(
-  "
-SELECT p.FLT_DATE, p.ttf, p.tdm_ert, p.tdm_arp
-FROM prudev.pru_fact_traffic_airspace p, prudev.pru_indicator i
-      WHERE p.TYPE = 'INDIC' AND i.code = 'CFMU_ZONE_FLIGHT' AND p.ID = i.ID
-      ORDER BY p.flt_date
-"
-)
-
-test_nw_2 <- export_query(
-  "select
-                a_first_entry_time_date FLIGHT_DATE ,
-                SUM(nvl(a.all_traffic,0)) FLT,
-                SUM(nvl(a.total_delay_in_minutes,0)) TDM
-           FROM  ARU_SYN.AGG_GLOBAL_DAILY_COUNTS  a
-           WHERE
-            a.a_first_entry_time_date  < TRUNC (SYSDATE)
-           GROUP BY  a.a_first_entry_time_date
-ORDER BY a_first_entry_time_date
-"
-)
-
-test_nw_1 <- test_nw_1 %>% mutate(FLT_DATE = as.Date(FLT_DATE))
-test_nw_2 <- test_nw_2 %>% mutate(FLIGHT_DATE = as.Date(FLIGHT_DATE))
-
-test_nw <- test_nw_1 %>%
-  left_join(test_nw_2, by = c("FLT_DATE" = "FLIGHT_DATE")) %>%
-  mutate(CHECK = TTF - FLT, TDM = TDM_ERT + TDM_ARP) %>%
-  # filter(!is.na(CHECK)) %>%
-  arrange(desc(TDM)) %>%
-  slice(1:10)
-
 nw_traffic_query <-
   "select     'NM Area' as STK_ID,
                 a_first_entry_time_date FLIGHT_DATE ,
@@ -59,6 +33,38 @@ nw_traffic_query <-
             a.a_first_entry_time_date  < TRUNC (SYSDATE)
            GROUP BY  a.a_first_entry_time_date
 ORDER BY a_first_entry_time_date
+"
+
+nw_delay_query <-
+  "SELECT
+'NM Area' as STK_ID,
+a.regulation_date,
+			NVL (SUM (a.tdm), 0)
+                 AS tdm
+
+--             , NVL (
+--                 SUM (
+--                     CASE
+--                         WHEN kind not  in ('AD','AZ')
+--                         THEN
+--                             NVL (a.tdm, 0)
+--                     END),
+--                 0)
+--                 tdm_ert
+
+        FROM prudev.pru_regulation a
+            WHERE a.regulation_date >= '01-jan-1997' and a.regulation_date < '01-jan-2012'
+   group by  a.regulation_date
+   union all
+   SELECT
+   'NM Area' as STK_ID,
+   A_FIRST_ENTRY_TIME_DATE,
+         SUM (TOTAL_DELAY_IN_MINUTES)                                AS TDM
+--       ,  SUM (TOTAL_DELAY_IN_MINUTES - AIRPORT_DELAY_IN_MINUTES)     AS TDM_ERT
+    FROM ARU_SYN.AGG_GLOBAL_DAILY_COUNTS SYN
+   WHERE A_FIRST_ENTRY_TIME_DATE >= to_date('01-01-2012','dd-mm-yyyy')
+   GROUP BY A_FIRST_ENTRY_TIME_DATE
+   ORDER BY Regulation_date
 "
 
 
@@ -431,7 +437,9 @@ con <- eurocontrol::db_connection(schema = "PRU_READ")
 
 sql_template <- get(paste0(
   if_else(stk == "ao_grp", "ao", stk),
-  "_traffic_query"
+  "_",
+  mapping_kpi[kpi],
+  "_query"
 ))
 
 base_query <- as.character(
@@ -676,7 +684,7 @@ period_ranking <- function(rank_period) {
 data_ranking <- map_dfr(rank_period, period_ranking)
 
 
-table_name <- paste0("RECORD_", toupper(stk), "_FLT")
+table_name <- paste0("RECORD_", toupper(stk), "_", toupper(kpi))
 
 ## set append to TRUE/FALSE depending on whether you want to add entries to an existing table or (re)create the table.
 ## It's commented out to force you to purposefully activate the line only whenever needed
