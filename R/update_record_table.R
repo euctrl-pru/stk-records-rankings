@@ -15,19 +15,19 @@ source("R/queries_for_update.R")
 
 # CALCS ----
 ## set params & toggles ----
-toggle_write_db <- FALSE
+toggle_write_db <- TRUE
 toggle_test <- FALSE
 agg_period <- "day"
 # agg_period <- "month"
 # current date not included in the dataset. Max day + 1
 current_date <- today()
-# current_date <- ymd("20260530")
-# current_date <- seq.Date(ymd("20260604"), ymd("20260616"))
+# current_date <- ymd("20260622")
+# current_date <- seq.Date(ymd("20260622"), ymd("20260628"))
 
 stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st_dai")
-# stk <- c("ao_grp")
+# stk <- c("st_dai")
 kpi <- c("flt", "dly")
-# kpi <- c("dly")
+# kpi <- c("flt")
 
 mapping_kpi <- c(
   flt = "traffic",
@@ -567,6 +567,13 @@ tryCatch(
               1
             ]
 
+            current_records <- data_updated_s %>%
+              select(
+                STK_ID,
+                PERIOD = RANK_PERIOD,
+                INIT_DATE_PERIOD
+              )
+
             rec_table_filtered <- rec_table %>%
               rename(
                 STK_ID = 1,
@@ -575,11 +582,22 @@ tryCatch(
                 DAYS_PERIOD_PREV = DAYS_PERIOD
               ) %>%
               filter(
-                STK_ID %in% s_id_list,
-                RANK == if_else(toggle_write_db, 2, 1)
+                STK_ID %in% s_id_list
+              ) %>%
+              anti_join(
+                current_records,
+                by = c(
+                  "STK_ID",
+                  "PERIOD",
+                  "INIT_DATE_PERIOD_PREV" = "INIT_DATE_PERIOD"
+                )
               ) %>%
               group_by(STK_ID, PERIOD) %>%
-              arrange(desc(INIT_DATE_PERIOD_PREV), .by_group = TRUE) %>%
+              arrange(
+                desc(AVG_FLT_PREV),
+                desc(INIT_DATE_PERIOD_PREV),
+                .by_group = TRUE
+              ) %>%
               slice(1) %>%
               ungroup()
 
