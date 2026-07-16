@@ -193,3 +193,4 @@ list_st_icao_dai <- dim_st_icao %>%
 list_st_icao_code_dai <- list_st_icao_dai |> pull(STK_CODE)
 
 dim_st_dai <- dim_st_icao
+dim_st <- dim_st_icao

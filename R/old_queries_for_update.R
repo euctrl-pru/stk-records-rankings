@@ -1,33 +1,31 @@
 # QUERIES ----
 ## Network ----
-nw_tfc_update_query <- "
-  select  'NM Area' as STK_ID,
-          {stk} as STK_TYPE,
-          a_first_entry_time_date as FLIGHT_DATE,
-          SUM(nvl(a.all_traffic,0)) as FLT_DAIO
-  FROM  prudev.v_aiu_agg_global_daily_counts  a
-  WHERE
-    a.a_first_entry_time_date >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
-    AND a.a_first_entry_time_date  < TO_DATE({to_date_str}, 'YYYY-MM-DD')
-  GROUP BY  a.a_first_entry_time_date
-  ORDER BY a_first_entry_time_date
+nw_traffic_update_query <- "
+  select     'NM Area' as STK_ID,
+a_first_entry_time_date FLIGHT_DATE ,
+SUM(nvl(a.all_traffic,0)) FLT
+FROM  prudev.v_aiu_agg_global_daily_counts  a
+WHERE
+a.a_first_entry_time_date >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+AND a.a_first_entry_time_date  < TO_DATE({to_date_str}, 'YYYY-MM-DD')
+GROUP BY  a.a_first_entry_time_date
+ORDER BY a_first_entry_time_date
 "
 
-nw_atfm_dly_update_query <-
+nw_delay_update_query <-
   "SELECT
    'NM Area' as STK_ID,
-    {stk} as STK_TYPE,
-   A_FIRST_ENTRY_TIME_DATE AS flight_date,
-         SUM (TOTAL_DELAY_IN_MINUTES) AS total_atfm_dly
---       ,  SUM (TOTAL_DELAY_IN_MINUTES - AIRPORT_DELAY_IN_MINUTES) AS TDM_ERT
-    FROM prudev.v_aiu_agg_global_daily_counts
+   A_FIRST_ENTRY_TIME_DATE AS regulation_date,
+         SUM (TOTAL_DELAY_IN_MINUTES)                                AS TDM
+--       ,  SUM (TOTAL_DELAY_IN_MINUTES - AIRPORT_DELAY_IN_MINUTES)     AS TDM_ERT
+    FROM ARU_SYN.AGG_GLOBAL_DAILY_COUNTS SYN
    WHERE A_FIRST_ENTRY_TIME_DATE >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
       AND A_FIRST_ENTRY_TIME_DATE < TO_DATE({to_date_str}, 'YYYY-MM-DD')
    GROUP BY A_FIRST_ENTRY_TIME_DATE
 "
 
 ## Airport ----
-ap_tfc_update_query <- "
+ap_traffic_update_query <- "
   WITH
   all_data AS (
       SELECT
@@ -67,10 +65,9 @@ ap_tfc_update_query <- "
           b.bk_ap_id
   )
   SELECT
-      bk_ap_id as STK_ID,
-      {stk} as STK_TYPE,
-      flt_date as FLIGHT_DATE,
-      SUM(mvt) AS FLT_DA
+      bk_ap_id,
+      flt_date,
+      SUM(mvt) AS DEP_ARR
   FROM all_data
   GROUP BY
       bk_ap_id,
@@ -78,7 +75,7 @@ ap_tfc_update_query <- "
   "
 
 ## ANSP ----
-sp_tfc_update_query <- "
+sp_traffic_update_query <- "
 WITH
 -- flights
 OP_AUA_DATA as
@@ -115,18 +112,16 @@ GROUP BY trunc(first_entry_time), ansp_name, ansp_id
 ),
 
 all_flt as(
-SELECT ansp_id AS STK_ID,
-       {stk} as STK_TYPE,
-       ENTRY_DATE  AS FLIGHT_date,
+SELECT ansp_id,
+       ENTRY_DATE  AS flt_date,
        flt_daio
 FROM op_ansp_data2
 where entry_date >=trunc(sysdate)-7 and entry_date < trunc(sysdate)
 
 UNION
 
-SELECT unit_id AS STK_ID,
-      {stk} as STK_TYPE,
-       FLIGHT_DATE,
+SELECT unit_id AS ansp_id,
+       FLIGHT_DATE as flt_date,
        TTF_FLT as FLT_DAIO
 FROM  PRUDEV.V_PRU_FAC_TD_DD
 WHERE  unit_kind = 'ANSP' and
@@ -136,14 +131,14 @@ WHERE  unit_kind = 'ANSP' and
 
 SELECT * FROM
 all_flt
-WHERE FLIGHT_DATE >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
-  AND FLIGHT_DATE < TO_DATE({to_date_str}, 'YYYY-MM-DD')
+WHERE flt_date >= TO_DATE({from_date_str}, 'YYYY-MM-DD')
+  AND flt_date < TO_DATE({to_date_str}, 'YYYY-MM-DD')
 
 "
 
 
 ## AO ----
-ao_tfc_update_query <- "
+ao_traffic_update_query <- "
 WITH
 list_ao AS (
 	SELECT 	ao_id,
@@ -197,17 +192,16 @@ DATA_FLIGHT AS (
 )
 
   SELECT
-    ao_id as stk_id,
-    {stk} as stk_type,
+    ao_id,
     entry_date AS flight_date,
-    COUNT(flt_uid) AS flt
+    COUNT(flt_uid)        AS day_tfc
   FROM DATA_FLIGHT
   WHERE ao_id IN ({list_id_ao*})
   GROUP BY ao_id,  entry_date
 "
 
 ## AO GRP ----
-ao_grp_tfc_update_query <- "
+ao_grp_traffic_update_query <- "
 WITH
 list_ao AS (
 	SELECT 	ao_id,
@@ -262,17 +256,16 @@ DATA_FLIGHT AS (
 )
 
   SELECT
-    ao_grp_name as stk_id,
-    {stk} as stk_type,
+    ao_grp_name,
     entry_date AS flight_date,
-    COUNT(flt_uid) AS flt
+    COUNT(flt_uid)        AS day_tfc
   FROM DATA_FLIGHT
   WHERE ao_id <> 99999
   GROUP BY ao_grp_name,  entry_date
 "
 
 ## ST DAI ----
-st_tfc_update_query <- "
+st_dai_traffic_update_query <- "
 WITH
 
 COUNTRY_ICAO2LETTER  as (
@@ -445,18 +438,10 @@ FROM CTRY_DAY_SPAIN A
 LEFT JOIN DATA_DEP_SPAIN b on a.day_date = b.FLIGHT_date
 LEFT JOIN DATA_ARR_SPAIN c on a.day_date = c.FLIGHT_date
 LEFT JOIN DATA_DOMESTIC_SPAIN d on a.day_date = d.FLIGHT_date
-),
+)
 
-data_all as (
 SELECT * FROM DATA_SPAIN_SEPARATED
 UNION ALL
 SELECT * FROM DATA_SPAIN_TOGETHER
-)
 
-select
-    COUNTRY_code as STK_ID,
-    {stk} as STK_TYPE,
-    flight_date,
-    DAY_TFC as FLT_DAI
-from data_all
 "

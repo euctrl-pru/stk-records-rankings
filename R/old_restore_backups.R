@@ -8,14 +8,14 @@ source("R/helpers.R")
 source("R/params.R")
 
 # stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st_dai")
-stk <- c("ao_grp")
+stk <- c("nw")
 
-table_name <- paste0("RECORD_", toupper(stk))
+table_name <- paste0("RECORD_", toupper(stk), "_FLT")
 
 # add the day with data that you want
 # 'LastVersion' or day in format "%Y%m%d"
 # backup_version <- 'LastVersion'
-backup_version <- "20260705"
+backup_version <- "20260709"
 
 
 if (backup_version == 'LastVersion') {

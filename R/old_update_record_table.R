@@ -8,10 +8,10 @@ source("R/helpers.R")
 source("R/dimensions.R")
 
 # PARAMS ----
-source("R/params.R")
+source("R/old_params.R")
 
 # QUERIES ----
-source("R/queries_for_update.R")
+source("R/old_queries_for_update.R")
 
 # CALCS ----
 ## set params & toggles ----
@@ -24,8 +24,15 @@ current_date <- today()
 # current_date <- ymd("20260622")
 # current_date <- seq.Date(ymd("20260622"), ymd("20260628"))
 
-stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st")
+stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st_dai")
 # stk <- c("nw")
+kpi <- c("flt", "dly")
+# kpi <- c("flt")
+
+mapping_kpi <- c(
+  flt = "traffic",
+  dly = "delay"
+)
 
 # Connect to the pocketlog (pl) instance (picks up credentials from environment variables)
 if (!toggle_test) {
@@ -49,21 +56,17 @@ tryCatch(
         agg_period <- append(agg_period, "year")
       }
 
-      run_for_kpa <- function(kpa) {
-        stk_kpi_run <- mapping_kpa_stk_kpi[[kpa]]
-        stk_kpi_run <- stk_kpi_run[names(stk_kpi_run) %in% stk]
-
-        # Keep a pre-update copy of each stakeholder record table.
-        # The big-record email must compare against the table as it existed
-        # before this run writes the new rankings to the database.
+      run_for_kpi <- function(kpi) {
+        # Keep a pre-update copy of each stakeholder record table in memory.
+        # The big-record email uses these snapshots instead of re-reading
+        # tables that may already have been updated during this run.
         previous_record_tables <- list()
 
-        run_for_stk <- function(stk, kpi) {
+        run_for_stk <- function(stk) {
           message(paste("running", stk))
 
           run_for_agg_period <- function(agg_period) {
             # agg_period <- "day"
-            # kpa <- "tfc"
             if (agg_period == "day") {
               # from_date <- ymd("20260522") - days(7)
               from_date <- current_date - days(1)
@@ -87,7 +90,7 @@ tryCatch(
             sql_template <- get(paste0(
               stk,
               "_",
-              kpa,
+              mapping_kpi[kpi],
               "_update_query"
             ))
 
@@ -103,35 +106,22 @@ tryCatch(
             ### execute query ----
             data_base_raw <- export_query(base_query)
 
-            if (!"FLT_UID" %in% names(data_base_raw)) {
-              data_base_raw <- data_base_raw %>%
-                mutate(FLT_UID = NA)
-            }
+            ### normalise dataset
+            norm_base_colnames <- c("ID", "FLT_DATE", "FLT")
+            colnames(data_base_raw) <- norm_base_colnames
 
-            ### pivot and normalise dataset
-            data_base_pivot <- data_base_raw %>%
-              tidyr::pivot_longer(
-                -c(STK_ID, STK_TYPE, FLIGHT_DATE, FLT_UID),
-                names_to = "KPI",
-                values_to = "KPI_VALUE"
-              ) %>%
-              mutate(
-                KPI = tolower(KPI),
-                KPA = kpa
-              )
-
-            data_base <- data_base_pivot %>%
+            data_base <- data_base_raw %>%
               mutate(
                 AGG_PERIOD = agg_period,
-                FLIGHT_DATE = as.Date(FLIGHT_DATE)
+                FLT_DATE = as.Date(FLT_DATE)
               ) %>%
-              group_by(STK_ID, STK_TYPE, KPA, KPI, AGG_PERIOD) %>%
+              group_by(ID, AGG_PERIOD) %>%
               summarise(
-                KPI_VALUE = sum(KPI_VALUE, na.rm = TRUE),
+                FLT = sum(FLT, na.rm = TRUE),
                 .groups = "drop"
               ) %>%
               mutate(
-                KPI_AVG_VALUE = KPI_VALUE / days_period,
+                AVG_FLT = FLT / days_period,
                 INIT_DATE_PERIOD = from_date,
                 DAYS_PERIOD = days_period,
                 LAST_UPDATED = now(),
@@ -140,7 +130,7 @@ tryCatch(
               select(-AGG_PERIOD)
 
             ### import source table
-            source_table <- paste0("RECORD_", toupper(stk))
+            source_table <- paste0("RECORD_", toupper(stk), "_", toupper(kpi))
             if (toggle_test) {
               source_table <- paste0("ZZ_BAD_", source_table)
             }
@@ -170,6 +160,18 @@ tryCatch(
                   )
                 ))
             }
+
+            ### normalise dataset
+            norm_source_colnames <- c(
+              "ID",
+              "INIT_DATE_PERIOD",
+              "AVG_FLT",
+              "RANK",
+              "PERIOD",
+              "DAYS_PERIOD",
+              "LAST_UPDATED"
+            )
+            colnames(data_source) <- norm_source_colnames
 
             ### process data ----
             ### set up rank_period list depending on agg period
@@ -230,58 +232,49 @@ tryCatch(
               }
 
               data_source_period <- data_source %>%
-                filter(PERIOD == rank_period, KPI == kpi)
+                filter(PERIOD == rank_period)
 
               # test_wzair <- data_source_period %>% filter(ID %in% c(1724, 1754, 1752, 2261))
 
               ### create list of stakeholders to be updated
               stk_to_be_updated <- data_source_period %>%
-                group_by(STK_ID) %>%
+                group_by(ID) %>%
                 summarise(
-                  min_kpi = min(KPI_AVG_VALUE, na.rm = TRUE),
-                  max_kpi = max(KPI_AVG_VALUE, na.rm = TRUE),
+                  min_flt = min(AVG_FLT, na.rm = TRUE),
+                  max_flt = max(AVG_FLT, na.rm = TRUE),
                   .groups = "drop"
                 ) %>%
-                inner_join(data_base_period, by = "STK_ID") %>%
-                filter(KPI_AVG_VALUE >= min_kpi) %>%
-                distinct(STK_ID)
+                inner_join(data_base_period, by = "ID") %>%
+                filter(AVG_FLT >= min_flt) %>%
+                distinct(ID)
 
               ### create df with potential new entries
               new_entries <- data_base_period %>%
-                filter(STK_ID %in% stk_to_be_updated$STK_ID) %>%
+                filter(ID %in% stk_to_be_updated$ID) %>%
                 select(
-                  STK_ID,
-                  STK_TYPE,
+                  ID,
                   INIT_DATE_PERIOD,
-                  KPA,
-                  KPI,
-                  KPI_AVG_VALUE,
+                  AVG_FLT,
                   DAYS_PERIOD,
                   LAST_UPDATED,
                   NEW_ENTRY
                 ) %>%
-                anti_join(
-                  data_source_period,
-                  by = c("STK_ID", "INIT_DATE_PERIOD", "KPI")
-                )
+                anti_join(data_source_period, by = c("ID", "INIT_DATE_PERIOD"))
 
               data_updated <- data_source_period %>%
-                filter(STK_ID %in% stk_to_be_updated$STK_ID) %>%
+                filter(ID %in% stk_to_be_updated$ID) %>%
                 select(
-                  STK_ID,
-                  STK_TYPE,
+                  ID,
                   INIT_DATE_PERIOD,
-                  KPA,
-                  KPI,
-                  KPI_AVG_VALUE,
+                  AVG_FLT,
                   DAYS_PERIOD,
                   LAST_UPDATED
                 ) %>%
                 mutate(NEW_ENTRY = "N") %>%
                 rbind(new_entries) %>%
-                group_by(STK_ID, KPI) %>%
-                mutate(RANK = dense_rank(-KPI_AVG_VALUE)) %>%
-                arrange(STK_ID, KPI, RANK, desc(INIT_DATE_PERIOD)) %>%
+                group_by(ID) %>%
+                mutate(RANK = dense_rank(-AVG_FLT)) %>%
+                arrange(ID, RANK, desc(INIT_DATE_PERIOD)) %>%
                 mutate(
                   MIN_RANK_UPDATE = if (any(NEW_ENTRY == "Y" & !is.na(RANK))) {
                     min(RANK[NEW_ENTRY == "Y"], na.rm = TRUE)
@@ -301,12 +294,9 @@ tryCatch(
                   )
                 ) %>%
                 select(
-                  STK_ID,
-                  STK_TYPE,
+                  ID,
                   INIT_DATE_PERIOD,
-                  KPA,
-                  KPI,
-                  KPI_AVG_VALUE,
+                  AVG_FLT,
                   RANK,
                   PERIOD,
                   DAYS_PERIOD,
@@ -314,48 +304,44 @@ tryCatch(
                   NEW_ENTRY
                 )
 
+              ## rename columns specific to stakeholder
+              mycolnames <- get(paste0('colnames_', stk))
+              mycolnames <- append(mycolnames, c("NEW_ENTRY"))
+              colnames(data_updated) <- mycolnames
+
               if (
-                toggle_write_db &&
-                  nrow(filter(data_updated, NEW_ENTRY == 'Y')) > 0
+                nrow(filter(data_updated, NEW_ENTRY == 'Y')) > 0 &
+                  toggle_write_db
               ) {
-                data_updated_table <- data_updated %>%
-                  select(-NEW_ENTRY)
-
-                data_source_keep <- data_source %>%
-                  filter(
-                    !(STK_ID %in%
-                      stk_to_be_updated$STK_ID &
-                      PERIOD == rank_period &
-                      KPI == kpi)
-                  )
-
-                data_source_full_updated <- bind_rows(
-                  data_source_keep,
-                  data_updated_table
-                )
+                ### delete impacted entries from table ----
+                list_id_to_be_updated <- stk_to_be_updated %>% pull(ID)
 
                 con <- eurocontrol::db_connection(schema = "PRU_READ")
 
                 source_table_sql <- DBI::SQL(source_table)
+                id_field <- DBI::SQL(get(paste0("colnames_", stk))[1])
 
-                DBI::dbExecute(
-                  con,
-                  glue_sql(
-                    "DELETE FROM {source_table_sql}",
-                    .con = con
-                  )
+                sql_delete <- glue_sql(
+                  "DELETE FROM {source_table_sql}
+             WHERE {id_field} in ({list_id_to_be_updated*})
+                  AND PERIOD = {rank_period}
+          ",
+                  .con = con
                 )
 
+                DBI::dbExecute(con, sql_delete)
                 DBI::dbCommit(con)
+
                 DBI::dbDisconnect(con)
 
+                ### write table ----
+                data_updated_table <- data_updated %>%
+                  select(-NEW_ENTRY)
                 write_table_oracle(
-                  data_source_full_updated,
+                  data_updated_table,
                   source_table,
                   append = TRUE
                 )
-
-                data_source <- data_source_full_updated
               }
 
               return(data_updated)
@@ -365,10 +351,19 @@ tryCatch(
             return(data_updated)
           }
 
-          # Keep the source table in memory before any period updates are written.
-          source_table_snapshot <- paste0("RECORD_", toupper(stk))
+          # Keep the complete source table as it exists before any updates.
+          source_table_snapshot <- paste0(
+            "RECORD_",
+            toupper(stk),
+            "_",
+            toupper(kpi)
+          )
+
           if (toggle_test) {
-            source_table_snapshot <- paste0("ZZ_BAD_", source_table_snapshot)
+            source_table_snapshot <- paste0(
+              "ZZ_BAD_",
+              source_table_snapshot
+            )
           }
 
           previous_record_tables[[stk]] <<- export_query(
@@ -380,8 +375,8 @@ tryCatch(
 
           dim_stk <- get(paste0("dim_", stk))
 
-          # id_col <- get(paste0("colnames_", stk))[1]
-          # metric_col <- get(paste0("colnames_", stk))[3]
+          id_col <- get(paste0("colnames_", stk))[1]
+          metric_col <- get(paste0("colnames_", stk))[3]
 
           data_updated_new <- data_updated %>%
             mutate(
@@ -390,7 +385,7 @@ tryCatch(
             left_join(
               dim_stk,
               by = join_by(
-                STK_ID == STK_ID,
+                !!sym(id_col) == STK_ID,
                 DATE_END >= VALID_FROM,
                 DATE_END <= VALID_TO
               )
@@ -406,18 +401,17 @@ tryCatch(
               )
             ) %>%
             select(
-              STK_ID,
+              STK_ID = !!sym(id_col),
               STK_NAME,
               STK_CODE,
               INIT_DATE_PERIOD,
-              KPI,
-              KPI_AVG_VALUE,
+              !!sym(metric_col),
               RANK,
               AGG_PERIOD,
               RANK_PERIOD = PERIOD,
               DAYS_PERIOD
             ) %>%
-            arrange(STK_NAME, KPI, AGG_PERIOD, RANK_PERIOD)
+            arrange(STK_NAME, AGG_PERIOD, RANK_PERIOD)
 
           if (stk == 'ao_grp') {
             data_updated_new <- data_updated_new %>%
@@ -439,8 +433,7 @@ tryCatch(
                 STK_NAME,
                 STK_CODE,
                 INIT_DATE_PERIOD,
-                KPI,
-                KPI_AVG_VALUE,
+                AVG_FLT,
                 RANK,
                 AGG_PERIOD,
                 RANK_PERIOD,
@@ -457,9 +450,14 @@ tryCatch(
           return(data_updated_new)
         }
 
-        results <- imap(stk_kpi_run, function(kpi, stk) {
-          run_for_stk(stk = stk, kpi = kpi)
-        })
+        stk_run <- if (kpi == "dly") {
+          "nw"
+        } else {
+          stk
+        }
+
+        results <- set_names(stk_run) |>
+          map(run_for_stk)
 
         # results <- data_updated_new
         # print(names(results))
@@ -476,12 +474,12 @@ tryCatch(
         )
         sbj = paste(
           "Record",
-          mapping_kpa_email[kpa],
+          mapping_kpi[kpi],
           "table updates for",
           current_date - days(1)
         )
 
-        for (s in names(results)) {
+        for (s in stk_run) {
           data_updated_s <- results[[s]] %>%
             mutate(
               across(
@@ -500,7 +498,7 @@ tryCatch(
               data_updated_s,
               format = "html",
               table.attr = "border='1' cellpadding='3' cellspacing='0'",
-              align = c("l", "l", "l", "l", rep("r", ncol(data_updated_s) - 3))
+              align = c("l", "l", "l", rep("r", ncol(data_updated_s) - 3))
             )
 
             msg <- paste0(
@@ -556,16 +554,14 @@ tryCatch(
         )
         sbj = paste(
           "New stakeholder",
-          mapping_kpa_email[kpa],
+          mapping_kpi[kpi],
           "records for",
           current_date - days(1)
         )
 
         records_beat <- 0
 
-        for (s in names(results)[!names(results) %in% c("ao")]) {
-          kpi_s <- unname(stk_kpi_run[s])
-
+        for (s in stk_run[!stk_run %in% c("ao")]) {
           data_updated_s <- results[[s]] %>%
             filter(
               RANK_PERIOD %in%
@@ -576,16 +572,21 @@ tryCatch(
           if (nrow(data_updated_s) > 0) {
             records_beat <- records_beat + 1
 
-            ### load rec table to get #2 entry ----
+            ### load pre-update record table to get #2 entry ----
             s_id_list <- data_updated_s %>% select(STK_ID) %>% pull()
 
-            # Use the pre-update copy captured before database writes.
             rec_table <- previous_record_tables[[s]]
+
+            col_name_flt_avg <- names(rec_table)[grepl(
+              "AVG",
+              names(rec_table)
+            )][
+              1
+            ]
 
             current_records <- data_updated_s %>%
               select(
                 STK_ID,
-                KPI,
                 PERIOD = RANK_PERIOD,
                 INIT_DATE_PERIOD
               )
@@ -593,26 +594,24 @@ tryCatch(
             rec_table_filtered <- rec_table %>%
               rename(
                 STK_ID = 1,
-                KPI_AVG_VALUE_PREV = 6,
+                AVG_FLT_PREV = 3,
                 INIT_DATE_PERIOD_PREV = INIT_DATE_PERIOD,
                 DAYS_PERIOD_PREV = DAYS_PERIOD
               ) %>%
               filter(
-                STK_ID %in% s_id_list,
-                KPI == kpi_s
+                STK_ID %in% s_id_list
               ) %>%
               anti_join(
                 current_records,
                 by = c(
                   "STK_ID",
-                  "KPI",
                   "PERIOD",
                   "INIT_DATE_PERIOD_PREV" = "INIT_DATE_PERIOD"
                 )
               ) %>%
-              group_by(STK_ID, KPI, PERIOD) %>%
+              group_by(STK_ID, PERIOD) %>%
               arrange(
-                desc(KPI_AVG_VALUE_PREV),
+                desc(AVG_FLT_PREV),
                 desc(INIT_DATE_PERIOD_PREV),
                 .by_group = TRUE
               ) %>%
@@ -622,28 +621,24 @@ tryCatch(
             data_updated_s_prev_num <- data_updated_s %>%
               left_join(
                 rec_table_filtered,
-                by = c("STK_ID", "RANK_PERIOD" = "PERIOD", "KPI")
+                by = c("STK_ID", "RANK_PERIOD" = "PERIOD")
               ) %>%
               mutate(
                 INIT_DATE_PERIOD_PREV = as.Date(INIT_DATE_PERIOD_PREV),
-                KPI_VALUE_PREV = round(
-                  KPI_AVG_VALUE_PREV * DAYS_PERIOD_PREV,
-                  0
-                ),
-                KPI_VALUE = round(KPI_AVG_VALUE * DAYS_PERIOD, 0),
-                CHECK_EQUAL_RECORD = KPI_AVG_VALUE - KPI_AVG_VALUE_PREV
+                TOTAL_FLT_PREV = round(AVG_FLT_PREV * DAYS_PERIOD_PREV, 0),
+                TOTAL_FLT = round(.data[[col_name_flt_avg]] * DAYS_PERIOD, 0),
+                CHECK_EQUAL_RECORD = !!sym(col_name_flt_avg) - AVG_FLT_PREV
               ) %>%
               select(
                 STK_NAME,
                 STK_CODE,
                 RANK_PERIOD,
                 INIT_DATE_PERIOD,
-                KPI,
-                KPI_AVG_VALUE,
-                KPI_VALUE,
+                !!sym(col_name_flt_avg),
+                TOTAL_FLT,
                 INIT_DATE_PERIOD_PREV,
-                KPI_AVG_VALUE_PREV,
-                KPI_VALUE_PREV,
+                AVG_FLT_PREV,
+                TOTAL_FLT_PREV,
                 CHECK_EQUAL_RECORD
               ) %>%
               filter(CHECK_EQUAL_RECORD != 0)
@@ -668,17 +663,25 @@ tryCatch(
                 )
               )
 
+            new_colnames <- c(
+              "STK_NAME",
+              "STK_CODE",
+              "PERIOD",
+              "INIT_DATE_PERIOD",
+              col_name_flt_avg,
+              sub("AVG", "TOTAL", col_name_flt_avg),
+              "INIT_DATE_PERIOD_PREV",
+              paste0(col_name_flt_avg, "_PREV"),
+              paste0(sub("AVG", "TOTAL", col_name_flt_avg), "_PREV")
+            )
+
+            colnames(data_updated_s_prev) <- new_colnames
+
             table_html <- knitr::kable(
               data_updated_s_prev,
               format = "html",
               table.attr = "border='1' cellpadding='3' cellspacing='0'",
-              align = c(
-                "l",
-                "l",
-                "l",
-                "l",
-                rep("r", ncol(data_updated_s_prev) - 3)
-              )
+              align = c("l", "l", "l", rep("r", ncol(data_updated_s_prev) - 3))
             )
 
             msg <- paste0(
@@ -715,7 +718,7 @@ tryCatch(
         }
         # walk(stk, run_for_stk)
       }
-      walk(names(mapping_kpa_stk_kpi), run_for_kpa)
+      walk(kpi, run_for_kpi)
     }
 
     walk(current_date, run_for_day)
@@ -731,34 +734,50 @@ tryCatch(
       )
     }
   },
-  # error = function(e) {
-  #   # In case of an error, log the error details with relevant metadata
-  #   if (!toggle_test) {
-  #     pl_error(
-  #       conn,
-  #       flow = "stakeholder_traffic_rankings",
-  #       log_type = "data_job",
-  #       message = sprintf("Process failed. %s", conditionMessage(e)),
-  #       metadata = NULL
-  #     )
-  #   } else {
-  #     stop(e)
-  #   }
-  # }
   error = function(e) {
-    error_msg <- conditionMessage(e)
-    message("ERROR: ", error_msg)
-
-    if (!toggle_test) {
-      pl_error(
-        conn,
-        flow = "stakeholder_traffic_rankings",
-        log_type = "data_job",
-        message = sprintf("Process failed. %s", error_msg),
-        metadata = NULL
-      )
-    }
-
-    stop(e)
+    # In case of an error, log the error details with relevant metadata
+    pl_error(
+      conn,
+      flow = "stakeholder_traffic_rankings",
+      log_type = "data_job",
+      message = sprintf("Process failed. %s", conditionMessage(e)),
+      metadata = NULL
+    )
   }
 )
+
+#add day period to tables
+# mytable <- "RECORD_ST_DAI_FLT_OLD"
+#
+# df <- export_query(glue("select * from {mytable}"))
+#
+# df_mod <- df %>%
+#   mutate(
+#     init_date_period = as.Date(INIT_DATE_PERIOD),
+#     DAYS_PERIOD = case_when(
+#       PERIOD %in%
+#         c(
+#           "DAY",
+#           "MONDAY",
+#           "TUESDAY",
+#           "WEDNESDAY",
+#           "THURSDAY",
+#           "FRIDAY",
+#           "SATURDAY",
+#           "SUNDAY"
+#         ) ~ 1L,
+#       PERIOD == "WEEK" ~ 7L,
+#       PERIOD %in% c("MONTH", paste0("MONTH_", sprintf("%02d", 1:12))) ~
+#         as.integer(days_in_month(init_date_period)),
+#       PERIOD %in% c("QUARTER", paste0("QUARTER_", sprintf("%02d", 1:4))) ~
+#         as.integer((init_date_period %m+% months(3)) - init_date_period),
+#       PERIOD == "YEAR" ~
+#         as.integer((init_date_period %m+% years(1)) - init_date_period),
+#       TRUE ~ NA_integer_
+#     )
+#   ) %>%
+#   select(-init_date_period) %>%
+#   relocate(DAYS_PERIOD, .before = LAST_UPDATED)
+#
+#
+# write_table_oracle(df_mod, "RECORD_ST_DAI_FLT", append = FALSE)
