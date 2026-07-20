@@ -524,11 +524,11 @@ tryCatch(
 
         from <- "oscar.alfaro@eurocontrol.int"
         to <- c(
-          "oscar.alfaro@eurocontrol.int"
+          "oscar.alfaro@eurocontrol.int",
+          "nora.cashman@eurocontrol.int"
           # "quinten.goens@eurocontrol.int",
           # "enrico.spinielli@eurocontrol.int",
           # "delia.budulan@eurocontrol.int",
-          # , "nora.cashman@eurocontrol.int"
         )
 
         control <- list(smtpServer = "mailservices.eurocontrol.int")
