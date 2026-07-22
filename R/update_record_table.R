@@ -664,7 +664,7 @@ tryCatch(
         # fmt: skip
         to <- c(
           "oscar.alfaro@eurocontrol.int"
-          # , "nora.cashman@eurocontrol.int"
+          , "nora.cashman@eurocontrol.int"
           # "quinten.goens@eurocontrol.int",
           # "enrico.spinielli@eurocontrol.int",
           # "delia.budulan@eurocontrol.int"
