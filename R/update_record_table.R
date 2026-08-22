@@ -835,7 +835,8 @@ tryCatch(
           "denis.huet@eurocontrol.int",
           "nora.cashman@eurocontrol.int",
           "kateryna.alifirenko.ext@eurocontrol.int",
-          "daria.andrzejewska@eurocontrol.int"
+          "daria.andrzejewska@eurocontrol.int",
+          "claire.leleu@eurocontrol.int",
         )
 
         control <- list(smtpServer = "mailservices.eurocontrol.int")
