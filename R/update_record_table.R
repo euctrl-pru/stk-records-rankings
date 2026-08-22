@@ -849,6 +849,27 @@ tryCatch(
             msg = mime_part_html(msg),
             control = control
           )
+        } else {
+          msg <- paste0(
+            "<html><body>",
+            "<p>Hello,</p>",
+            "<p>No records were broken on ",
+            current_date - days(1),
+            "</p>"
+          )
+
+          sbj <- paste(
+            "No records broken on ",
+            current_date - days(1)
+          )
+
+          sendmail(
+            from = from,
+            to = to,
+            subject = sbj,
+            msg = msg,
+            control = control
+          )
         }
       }
 
