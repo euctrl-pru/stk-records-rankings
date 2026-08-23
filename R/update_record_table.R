@@ -830,13 +830,14 @@ tryCatch(
         msg <- paste0(msg, "</body></html>")
 
         from <- "oscar.alfaro@eurocontrol.int"
+        #fmt: skip
         to <- c(
-          "oscar.alfaro@eurocontrol.int",
-          "denis.huet@eurocontrol.int",
-          "nora.cashman@eurocontrol.int",
-          "kateryna.alifirenko.ext@eurocontrol.int",
-          "daria.andrzejewska@eurocontrol.int",
-          "claire.leleu@eurocontrol.int",
+          "oscar.alfaro@eurocontrol.int"
+          , "denis.huet@eurocontrol.int"
+          , "nora.cashman@eurocontrol.int"
+          , "kateryna.alifirenko.ext@eurocontrol.int"
+          , "daria.andrzejewska@eurocontrol.int"
+          , "claire.leleu@eurocontrol.int"
         )
 
         control <- list(smtpServer = "mailservices.eurocontrol.int")
@@ -849,14 +850,15 @@ tryCatch(
             msg = mime_part_html(msg),
             control = control
           )
-        } else {
-          msg <- paste0(
+        } else if (kpa == 'tfc') {
+          msg <- mime_part_html(paste0(
             "<html><body>",
             "<p>Hello,</p>",
             "<p>No records were broken on ",
             current_date - days(1),
-            "</p>"
-          )
+            "</p>",
+            "</body></html>"
+          ))
 
           sbj <- paste(
             "No records broken on ",
