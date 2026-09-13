@@ -1,5 +1,12 @@
 # BACKUP FOLDER ----
-backup_folder <- 'G:/HQ/dgof-pru/Data/DataProcessing/Covid19/Archive'
+user <- Sys.info()["user"]
+backup_folder <- paste0(
+  "C:/Users/",
+  user,
+  "/OneDrive - EUROCONTROL/Shared Documents - ECTL - Aviation Intelligence Unit/Data archive/stakeholder_records"
+)
+
+# old_backup_folder <- 'G:/HQ/dgof-pru/Data/DataProcessing/Covid19/Archive'
 
 mapping_kpa_stk_kpi <- list(
   tfc = c(
