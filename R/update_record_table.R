@@ -835,6 +835,7 @@ tryCatch(
           "oscar.alfaro@eurocontrol.int"
           , "denis.huet@eurocontrol.int"
           , "nora.cashman@eurocontrol.int"
+          , "delia.budulan@eurocontrol.int"
           , "kateryna.alifirenko.ext@eurocontrol.int"
           , "daria.andrzejewska@eurocontrol.int"
           , "claire.leleu@eurocontrol.int"
