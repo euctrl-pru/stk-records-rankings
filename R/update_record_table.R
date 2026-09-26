@@ -22,13 +22,24 @@ toggle_test <- FALSE
 # Set to FALSE while testing if the network backup location is unavailable.
 toggle_backup <- TRUE
 
+# three possible values 'always' 'last day' 'never'
+toggle_email <- 'last day'
+
 # current date is not included in the dataset. Max day + 1
-current_date <- today()
+# current_date <- today()
+current_date <- c(today() - days(2), today() - days(1), today())
 # current_date <- ymd("20260622")
 # current_date <- seq.Date(ymd("20260622"), ymd("20260628"))
 
 stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st")
-# stk <- c("nw")
+# stk <- c("st")
+
+walk(
+  stk,
+  restore_backup,
+  backup_version = format(min(current_date - days(1)), '%Y%m%d')
+)
+
 
 # Connect to the pocketlog (pl) instance (picks up credentials from environment variables)
 if (!toggle_test) {
@@ -835,7 +846,6 @@ tryCatch(
           "oscar.alfaro@eurocontrol.int"
           , "denis.huet@eurocontrol.int"
           , "nora.cashman@eurocontrol.int"
-          , "delia.budulan@eurocontrol.int"
           , "kateryna.alifirenko.ext@eurocontrol.int"
           , "daria.andrzejewska@eurocontrol.int"
           , "claire.leleu@eurocontrol.int"
@@ -877,14 +887,20 @@ tryCatch(
       }
 
       # Send emails after all in-memory processing and Oracle writes finish.
-      invisible(lapply(kpa_names, function(kpa) {
-        send_kpa_emails(
-          kpa = kpa,
-          stk_kpi_run = kpa_runs[[kpa]]$stk_kpi_run,
-          results = kpa_runs[[kpa]]$results
-        )
-        NULL
-      }))
+
+      if (
+        toggle_email == 'always' |
+          (toggle_email == 'last day' & current_date == today())
+      ) {
+        invisible(lapply(kpa_names, function(kpa) {
+          send_kpa_emails(
+            kpa = kpa,
+            stk_kpi_run = kpa_runs[[kpa]]$stk_kpi_run,
+            results = kpa_runs[[kpa]]$results
+          )
+          NULL
+        }))
+      }
     }
 
     walk(current_date, run_for_day)
@@ -917,3 +933,139 @@ tryCatch(
     stop(e)
   }
 )
+
+# WEEKLY SUMMARY ----
+stk <- c("nw", "ap", "sp", "ao_grp", "st")
+# stk <- "ap"
+date_summary <- today()
+
+if (wday(date_summary, week_start = 1) == 1 & toggle_email != "never") {
+  weekly_summary <- function(stk) {
+    source_table <- paste0("V_RECORD_", toupper(stk))
+
+    summary_query <- glue(
+      "
+    select * from {source_table}
+    where PERIOD = 'DAY'
+    "
+    )
+
+    df <- export_query(summary_query) |>
+      mutate(INIT_DATE_PERIOD = as.Date(INIT_DATE_PERIOD))
+
+    df_record <- df |>
+      filter(INIT_DATE_PERIOD >= date_summary - days(7) & RANK == 1)
+
+    df_record_prev <- df |>
+      filter(
+        INIT_DATE_PERIOD < date_summary - days(7) &
+          STK_ID %in% df_record$STK_ID
+      ) |>
+      group_by(STK_ID) %>%
+      slice_max(order_by = -RANK, n = 1, with_ties = FALSE) %>%
+      ungroup() |>
+      select(
+        STK_ID,
+        INIT_DATE_PERIOD_PREV = INIT_DATE_PERIOD,
+        KPI_AVG_VALUE_PREV = KPI_AVG_VALUE
+      )
+
+    format_dif_number <- function(x) {
+      x <- round(x, 1)
+      paste0(
+        ifelse(!is.na(x) & x > 0, "+", ""),
+        format(x, big.mark = ",", nsmall = 1, scientific = FALSE, trim = TRUE)
+      )
+    }
+
+    df_record_calc <- df_record |>
+      left_join(df_record_prev, by = "STK_ID") |>
+      mutate(
+        DIF_PERC = paste0(
+          format_dif_number((KPI_AVG_VALUE / KPI_AVG_VALUE_PREV - 1) * 100),
+          "%"
+        ),
+        DIF_VALUE = stringr::str_remove_all(
+          format_dif_number(KPI_AVG_VALUE - KPI_AVG_VALUE_PREV),
+          ".0"
+        ),
+        STK_TYPE = stk
+      ) |>
+      select(
+        STK_NAME,
+        STK_TYPE,
+        # RANK,
+        KPI,
+        INIT_DATE_PERIOD,
+        KPI_VALUE = KPI_AVG_VALUE,
+        INIT_DATE_PERIOD_PREV,
+        KPI_VALUE_PREV = KPI_AVG_VALUE_PREV,
+        DIF_PERC,
+        DIF_VALUE
+      ) |>
+      filter(DIF_VALUE != 0)
+
+    return(df_record_calc)
+  }
+
+  summary_table <- map_df(stk, weekly_summary)
+  week_no <- lubridate::week(date_summary - days(1))
+
+  if (nrow(summary_table) == 0) {
+    msg <- paste0(
+      'No records were beaten on W',
+      week_no,
+      " (",
+      date_summary - days(7),
+      " to ",
+      date_summary - days(1),
+      ")"
+    )
+  } else {
+    table_html <- knitr::kable(
+      summary_table,
+      format = "html",
+      table.attr = "border='1' cellpadding='3' cellspacing='0'",
+      align = c(
+        rep("l", 3),
+        rep("r", ncol(summary_table) - 3)
+      )
+    )
+
+    msg <- paste0(
+      '<p>The following stakeholders beat historic records on W',
+      week_no,
+      " (",
+      date_summary - days(7),
+      " to ",
+      date_summary - days(1),
+      "): </p>",
+      table_html
+    )
+  }
+
+  sbj <- paste0("Stakeholder records W", week_no)
+
+  msg <- paste0("<html><body>", msg, "</body></html>")
+
+  from <- "oscar.alfaro@eurocontrol.int"
+  # fmt: skip
+  to <- c(
+    "oscar.alfaro@eurocontrol.int"
+    , "daria.andrzejewska@eurocontrol.int"
+  )
+
+  control <- list(smtpServer = "mailservices.eurocontrol.int")
+
+  message("Reached weekly summary email send")
+  print(to)
+  print(sbj)
+
+  sendmail(
+    from = from,
+    to = to,
+    subject = sbj,
+    msg = mime_part_html(msg),
+    control = control
+  )
+}

@@ -11,8 +11,8 @@ source("R/dimensions.R")
 source("R/params.R")
 
 ### set stakeholder and kpi
-stk <- "nw"
-kpi <- "dly"
+stk <- "ap"
+kpi <- "traffic"
 
 mapping_kpi <- c(
   flt = "traffic",
@@ -84,6 +84,9 @@ where status IN ('TE', 'TA', 'AA')
 
 
 ## Airport ----
+# add Ankara, Charleroi, Sofia
+# list_id_ap <- c(6575, 5324, 3114)
+
 ap_traffic_query <- "
 WITH all_data AS (
   SELECT
@@ -457,12 +460,89 @@ sql_template <- get(paste0(
   "_query"
 ))
 
+
 base_query <- as.character(
   glue::glue_sql(
     sql_template,
     .con = con
   )
 )
+
+base_query <- "
+WITH all_data AS (
+  SELECT
+  TRUNC(lobt) AS flt_date,
+  bk_adep_id AS STK_ID,
+  COUNT(flt_uid) AS mvt,
+  'dep' AS flow_type
+  FROM swh_fct.fac_flight
+  WHERE bk_adep_id IN (6575, 5324, 3114)
+  AND lobt < TO_DATE('2007-01-01', 'yyyy-mm-dd')
+  AND flt_status IN ('TE','TA','AA')
+  GROUP BY
+  TRUNC(lobt),
+  bk_adep_id
+
+  UNION ALL
+
+  SELECT
+  TRUNC(lobt) AS flt_date,
+  bk_ades_id AS STK_ID,
+  COUNT(flt_uid) AS mvt,
+  'arr' AS flow_type
+  FROM swh_fct.fac_flight
+  WHERE bk_ades_id IN (6575, 5324, 3114)
+  AND lobt < TO_DATE('2007-01-01', 'yyyy-mm-dd')
+  AND flt_status IN ('TE','TA','AA')
+  GROUP BY
+  TRUNC(lobt),
+  bk_ades_id
+
+  UNION ALL
+
+  SELECT
+  a.ADEP_DAY_FLT_DATE AS flt_date,
+  b.bk_ap_id as STK_ID,
+  SUM(a.ADEP_DAY_ALL_TRF) AS mvt,
+  'dep' AS flow_type
+  FROM aru_syn.AGG_dep_DAY a
+  LEFT JOIN pruread.v_aiu_dim_airport b
+  ON a.adep_day_adep = b.CFMU_AP_CODE
+  AND a.ADEP_DAY_FLT_DATE >= b.valid_from
+  AND a.ADEP_DAY_FLT_DATE <= b.valid_to
+  WHERE EXTRACT(YEAR FROM a.ADEP_DAY_FLT_DATE) >= 2007
+  AND b.bk_ap_id IN (6575, 5324, 3114)
+  GROUP BY
+  a.ADEP_DAY_FLT_DATE,
+  b.bk_ap_id
+
+  UNION ALL
+
+  SELECT
+  a.ADES_DAY_FLT_DATE AS flt_date,
+  b.bk_ap_id as STK_ID,
+  SUM(a.ADES_DAY_ALL_TRF) AS mvt,
+  'arr' AS flow_type
+  FROM aru_syn.AGG_arr_DAY a
+  LEFT JOIN pruread.v_aiu_dim_airport b
+  ON a.ADES_DAY_ADES_CTFM = b.CFMU_AP_CODE
+  AND a.ADES_DAY_FLT_DATE >= b.valid_from
+  AND a.ADES_DAY_FLT_DATE <= b.valid_to
+  WHERE EXTRACT(YEAR FROM a.ADES_DAY_FLT_DATE) >= 2007
+  AND b.bk_ap_id IN (6575, 5324, 3114)
+  GROUP BY
+  a.ADES_DAY_FLT_DATE,
+  b.bk_ap_id
+)
+SELECT
+STK_ID,
+flt_date,
+SUM(mvt) AS DEP_ARR
+FROM all_data
+GROUP BY
+STK_ID,
+flt_date"
+
 
 DBI::dbDisconnect(con)
 
@@ -701,6 +781,8 @@ data_ranking <- map_dfr(rank_period, period_ranking)
 
 table_name <- paste0("RECORD_", toupper(stk), "_", toupper(kpi))
 
+table_name <- paste0("RECORD_", toupper(stk))
+
 ## set append to TRUE/FALSE depending on whether you want to add entries to an existing table or (re)create the table.
 ## It's commented out to force you to purposefully activate the line only whenever needed
 
@@ -713,3 +795,24 @@ table_name <- paste0("RECORD_", toupper(stk), "_", toupper(kpi))
 #
 #
 # table_name <- paste0("RECORD_", toupper(stk), "_FLT")
+
+# data_ranking_mod <- data_ranking |>
+#   mutate(
+#     STK_TYPE = "ap",
+#     KPI = "flt_da",
+#     KPA = "tfc"
+#   ) |>
+#   select(
+#     STK_ID = BK_AP_ID,
+#     STK_TYPE,
+#     INIT_DATE_PERIOD,
+#     KPA,
+#     KPI,
+#     KPI_AVG_VALUE = AVG_DEP_ARR,
+#     RANK,
+#     PERIOD,
+#     DAYS_PERIOD,
+#     LAST_UPDATED
+#   )
+
+# data_ranking_mod |> write_csv('G:/HQ/dgof-pru/Data/DataProcessing/Covid19/Oscar/Develop/missing_airports.csv')

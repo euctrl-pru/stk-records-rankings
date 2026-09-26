@@ -1,5 +1,5 @@
 # stk <- c("nw", "ap", "sp", "ao", "ao_grp", "st_dai")
-stk <- c("nw")
+stk <- c("ap")
 # kpi <- c("flt")
 
 ### import source table
@@ -54,6 +54,9 @@ data_norm <- data_source %>%
 #   )
 
 new_data <- data_norm
+
+# new_data <- data_source |>
+#   rbind(data_ranking_mod)
 
 new_source_table <- paste0("RECORD_", toupper(stk))
 
